@@ -1,5 +1,5 @@
 import pandas as pd
-
+import json
 #Functions for generating GPT strings from ANES 
 def format_list(words):
     if len(words) == 0:
@@ -48,7 +48,14 @@ def get_anes_rows(number_rows):
     'V201232':'partyIdentity',
     'V201156':'feelingDemocratic',
     'V201157':'feelingRepublican',
-    'V202544':'howOftenUseTwitter'}
+    'V202544':'howOftenUseTwitter',
+    'V201508':'martialStatus',
+    'V201200':'liberalConservative',
+    'V201529': 'occupation',
+    'V202205y1': 'problem1',
+    'V202205y2': 'problem2',
+    'V202205y3': 'problem3'
+    }
 
     df1 = df1.rename(columns=col_recode)
 
@@ -200,7 +207,7 @@ def get_anes_rows(number_rows):
     df1 = df1.replace({'selfCensor': dic})
 
 
-    dic = {-9: None,-5: None}
+    dic = {-9: 0,-5: 0}
 
     df1 = df1.replace({'gunsOwned': dic})
 
@@ -307,6 +314,137 @@ def get_anes_rows(number_rows):
 
     df1 = df1.replace({'partyIdentity': dic})
 
+    dic = {-9: None,
+           -8: None,
+           1: 'married',
+           2: 'married',
+           3: 'widowed',
+           4: 'divorced',
+           5: 'separated',
+           6: 'never married'}
+    
+    df1 = df1.replace({'martialStatus': dic})
+
+    dic = {-9: None,
+              -8: None,
+              1: 'extremely liberal',
+              2: 'liberal',
+              3: 'slightly liberal',
+              4: None,
+                5: 'slightly conservative',
+                6: 'conservative',
+                7: 'extremely conservative',
+                99: None
+    }
+
+    df1 = df1.replace({'liberalConservative': dic})
+
+    dic = {
+        -9: None,
+        -1: None,
+        1: "For-profit company or organization",
+        2: "Non-profit organization (including tax-exempt and charitable organizations)",
+        3: "Local government (for example: city or county school district)",
+        4: "State government (including state colleges/universities)",
+        5: "Active duty U.S. Armed Forces or Commissioned Corps",
+        6: "Federal government civilian employee",
+        7: "Owner of non-incorporated business, professional practice, or farm",
+        8: "Owner of incorporated business, professional practice, or farm",
+        9: "Worked without pay in a for-profit family business or farm for 15 hours or more per week"
+    }
+
+    df1 = df1.replace({'occupation': dic})
+
+    dic  = {
+    1: "Defense spending",
+    2: "Middle East",
+    3: "Iraq",
+    4: "War",
+    5: "Terrorism",
+    6: "Veterans",
+    7: "National defense",
+    8: "Foreign aid",
+    9: "Foreign Trade",
+    10: "Protection of US jobs",
+    11: "Serbia /Balkans",
+    12: "China",
+    13: "International affairs",
+    14: "Energy crisis",
+    15: "Energy prices",
+    16: "Energy",
+    17: "Environment",
+    18: "Natural Resources",
+    19: "Education and training",
+    20: "School funding",
+    21: "Education",
+    22: "AIDS",
+    23: "Medicare",
+    24: "Health",
+    25: "Welfare",
+    26: "Poverty",
+    27: "Employment",
+    28: "Housing",
+    29: "Social security",
+    30: "Income",
+    31: "Crime",
+    32: "Race relations",
+    33: "Illegal drugs",
+    34: "Police problems",
+    35: "Guns",
+    36: "Corporate Corruption",
+    37: "Justice",
+    38: "Budget",
+    39: "Size of government",
+    40: "Taxes",
+    41: "Immigration",
+    42: "Campaign finance",
+    43: "Political corruption",
+    44: "Ethics",
+    45: "Government power",
+    46: "Budget priorities",
+    47: "Partisan politics",
+    48: "Politicians",
+    49: "Government",
+    50: "The economy",
+    51: "Stock market",
+    52: "Economic inequality",
+    53: "Recession",
+    54: "Inflation",
+    55: "Economics",
+    56: "Agriculture",
+    57: "Science",
+    58: "Commerce",
+    59: "Transportation",
+    60: "Community development",
+    61: "Abortion",
+    62: "Child care",
+    63: "Overpopulation",
+    64: "Public morality",
+    65: "Domestic violence",
+    66: "Family",
+    67: "Young people",
+    68: "Sexual identity /LGBT+ issues",
+    69: "The media",
+    75: "Sexism /Gender issues",
+    76: "Afghanistan",
+    77: "Syria",
+    78: "Elections",
+    79: "Religion",
+    80: "Civility",
+    81: "Unity /division",
+    82: "Health care",
+    700: None,
+    750: None,
+    800: None,
+    990: None,
+    997: None,
+}
+
+    df1 = df1.replace({'problem1': dic})
+    df1 = df1.replace({'problem2': dic})
+    df1 = df1.replace({'problem3': dic})
+
+
 
     # We select only people who ever use twitter
     df1 = df1.loc[df1['howOftenUseTwitter'].isin((1,2,3,4,5,6))]
@@ -355,6 +493,8 @@ def get_anes_rows(number_rows):
         
         l['feelingDemocratic'] = d['feelingDemocratic']
         l['feelingRepublican'] = d['feelingRepublican']
+
+        l['liberalConservative'] = d['liberalConservative']
         # Normalize the twitter use variable: 
         #NormalizeL: How many times per every second week?
         # 1. Many times every day: 50
@@ -432,7 +572,11 @@ def get_anes_rows(number_rows):
             'V202160': 'feminists',
             'V202161': 'liberals',
             'V202164': 'conservatives',
-            'V202166': 'homosexuals'}
+            'V202166': 'homosexuals',
+            'V202176': 'NATO',
+            'V202179': 'socialists',
+            'V202180': 'capitalists',
+            'V202183': '#MeToo'}
         
         lovelist = []
         hatelist = []
@@ -443,11 +587,13 @@ def get_anes_rows(number_rows):
                 lovelist.append(v)
         
         #Create persona string
-        l['persona'] = "Here is a description of your persona: \n"
+        l['persona'] = ""
 
         if d['gender'] is not None:
             l['persona'] += f"You are {d['gender']}.\n"
-            
+
+        if d['martialStatus'] is not None:
+            l['persona'] += f"You are {d['martialStatus']}.\n"
             
         if d['income'] is not None and d['income']>0:
             if d['income'] >= 1 and d['income'] <= 10:
@@ -457,6 +603,9 @@ def get_anes_rows(number_rows):
             else:
                 incomeclass = 'high income'
             l['persona'] += f"You are {incomeclass}.\n"
+
+        # if d['occupation'] is not None:
+        #     l['persona'] += f"Your occupation: {d['occupation']}.\n"
         
             
         if d['V201507x'] is not None:
@@ -483,70 +632,85 @@ def get_anes_rows(number_rows):
         l['party'] = 'Democrat' if l['partisan'] < 0 else 'Republican' if l['partisan'] > 0 else 'Non-partisan'        
         
         #People who never talk about politics: we add other preferences
-        if d['V202545'] == 5: # V202023
-            l['persona'] += "You never talk about politics.\n" #
-            l['never_talk_politics'] = True
-            
-            l['party'] = 'Non-partisan'
-            l['partisan'] = 0
-            
-            #Fishing
-            if d['V202567'] == 1:
-                l['persona'] += "You like to go fishing or hunting.\n" #
-                               
-        #They do talk about politics 
+        # if d['V202545'] == 5: # V202023
+        l['persona'] += "You never talk about politics.\n" #
+        l['never_talk_politics'] = True
+        
+        l['party'] = 'Non-partisan'
+        l['partisan'] = 0
+        
+        #Fishing
+        if d['V202567'] == 1:
+            l['persona'] += "You like to go fishing or hunting.\n" #
+                            
+    #They do talk about politics 
+    # else:
+        l['never_talk_politics'] = False
+        
+        if d['vote2020'] in ['Donald Trump','Joe Biden']:
+            l['persona'] += f"You voted for {d['vote2020']} in 2020.\n"
         else:
-            l['never_talk_politics'] = False
-            
-            if d['vote2020'] in ['Donald Trump','Joe Biden']:
-                l['persona'] += f"You voted for {d['vote2020']} in 2020.\n"
-            else:
-                l['persona'] += "You didn't vote in 2020.\n"
-                
-                
-            # OLD WAY OF ASSIGNING PARTY
-            # l['party'] = 'Democrat' if d['V201231x'] in [1,2,3] else 'Republican' if d['V201231x'] in [5,6,7] else 'Independent' if d['V201231x'] == 4 else 'None'
+            l['persona'] += "You didn't vote in 2020.\n"
             
             
-            # if d['strongIdentif'] is not None: 
-            #     l['persona'] += f"You are a {d['strongIdentif']}.\n"
+        # OLD WAY OF ASSIGNING PARTY
+        # l['party'] = 'Democrat' if d['V201231x'] in [1,2,3] else 'Republican' if d['V201231x'] in [5,6,7] else 'Independent' if d['V201231x'] == 4 else 'None'
         
-            #This worked poorly
-            # l['persona'] += f"On a scale from -100 to 100, where -100 is extremely Democratic and 100 is extremely Republican, you are: {d['partisan']}.\n"
         
-            
-            #Generate party affiliation
-            if l['partisan'] == 0:
-                l['persona'] += 'You prefer neither political party.\n'
-            if l['partisan'] < 0 and l['partisan'] > -0.2:
-                l['persona'] += 'You prefer the Democrats.\n'
-            if l['partisan'] > 0 and l['partisan'] < 0.2:
-                l['persona'] += 'You prefer the Republicans.\n'
-            if l['partisan'] <= -0.2 and l['partisan'] > -0.5:
-                l['persona'] += 'You are a Democrat.\n'
-            if l['partisan'] >= 0.2 and l['partisan'] < 0.5:
-                l['persona'] += 'You are a Republican.\n'
-            if l['partisan'] <= -0.5:
-                l['persona'] += 'You are a strong Democrat.\n'
-            if l['partisan'] >= 0.5:
-                l['persona'] += 'You are a strong Republican.\n'           
-            
-            if d['justifiedViolence'] in [3,4,5]:
-                l['persona'] += "You think political violence is justified.\n"
+        # if d['strongIdentif'] is not None: 
+        #     l['persona'] += f"You are a {d['strongIdentif']}.\n"
+    
+        #This worked poorly
+        # l['persona'] += f"On a scale from -100 to 100, where -100 is extremely Democratic and 100 is extremely Republican, you are: {d['partisan']}.\n"
+    
+        
+        #Generate party affiliation
+        if l['partisan'] == 0:
+            l['persona'] += 'You prefer neither political party.\n'
+        if l['partisan'] < 0 and l['partisan'] > -0.2:
+            l['persona'] += 'You prefer the Democrats.\n'
+        if l['partisan'] > 0 and l['partisan'] < 0.2:
+            l['persona'] += 'You prefer the Republicans.\n'
+        if l['partisan'] <= -0.2 and l['partisan'] > -0.5:
+            l['persona'] += 'You are a Democrat.\n'
+        if l['partisan'] >= 0.2 and l['partisan'] < 0.5:
+            l['persona'] += 'You are a Republican.\n'
+        if l['partisan'] <= -0.5:
+            l['persona'] += 'You are a strong Democrat.\n'
+        if l['partisan'] >= 0.5:
+            l['persona'] += 'You are a strong Republican.\n'
 
-            if len(lovelist)>0:
-                l['persona'] += f'You love {format_list(lovelist)}.\n'
+        
+        if d['justifiedViolence'] in [3,4,5]:
+            l['persona'] += "You think political violence is justified.\n"
 
-            if len(hatelist)>0:
-                l['persona'] += f'You hate {format_list(hatelist)}.\n'            
+        if len(lovelist)>0:
+            l['persona'] += f'You love {format_list(lovelist)}.\n'
+
+        if len(hatelist)>0:
+            l['persona'] += f'You hate {format_list(hatelist)}.\n'            
 
         #You post online a lot or always about politics, or you get into political argument in the last 12 months
         if d['V202545']== 1 or d['V202545']== 2: #d['V202024']== 1 or 
             l['persona'] += "You like to argue about politics.\n"
             
-        
-        if len(feelings)>0:
-            l['persona'] += f"You feel {format_list(feelings)} about your country.\n"
+        if d['liberalConservative'] is not None:
+                l['persona'] += f'You consider yourself {d["liberalConservative"]}.\n' 
+
+        problems = [d['problem1'],d['problem2'],d['problem3']]
+        problems = [p for p in problems if p is not None and type(p) == str]
+
+        if len(problems)==1:
+            l['persona'] += f'You think the most important problem facing the country is {format_list(problems)}.\n'
+        elif len(problems)>1:
+            l['persona'] += f'You think the most important problems facing the country are {format_list(problems)}.\n'
+
+        if d['gunsOwned'] > 0:
+            l['persona'] += "You own guns.\n"
+
+        # if len(feelings)>0:
+        #     l['persona'] += f"You feel {format_list(feelings)} about your country.\n"
+
 
         if len(hobbies_liked)>0:
             l['persona'] += f'You like to watch {format_list(hobbies_liked)} on TV.\n'
@@ -560,8 +724,16 @@ def get_anes_rows(number_rows):
 
     return res
 
+def return_persona_string():
+    
+    personas = get_anes_rows(1)
+    return personas[0]['persona']
+
 if __name__ == "__main__":
     
     #Example usage
-    personas = get_anes_rows(2)
-    print(personas[1]['persona'])
+    # print(return_persona_string())
+
+    personas = get_anes_rows(100)
+    
+    json.dump(personas, open("personas.json","w"))
