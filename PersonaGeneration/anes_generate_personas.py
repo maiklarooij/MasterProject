@@ -1,5 +1,7 @@
 import pandas as pd
 import json
+import openai
+import dotenv
 #Functions for generating GPT strings from ANES 
 def format_list(words):
     if len(words) == 0:
@@ -632,9 +634,9 @@ def get_anes_rows(number_rows):
         l['party'] = 'Democrat' if l['partisan'] < 0 else 'Republican' if l['partisan'] > 0 else 'Non-partisan'        
         
         #People who never talk about politics: we add other preferences
-        # if d['V202545'] == 5: # V202023
-        l['persona'] += "You never talk about politics.\n" #
-        l['never_talk_politics'] = True
+        if d['V202545'] == 5: # V202023
+            l['persona'] += "You never talk about politics.\n" #
+            l['never_talk_politics'] = True
         
         l['party'] = 'Non-partisan'
         l['partisan'] = 0
@@ -729,11 +731,46 @@ def return_persona_string():
     personas = get_anes_rows(1)
     return personas[0]['persona']
 
+
+def extend_with_ai(persona, client):
+
+    prompt = f"""I am going to give you a persona of a person. I need you to fill in some other pieces:
+
+Your name is ....
+Your occupation is ....
+You like .....
+
+You need to be creative. It does not have to be fully based on the persona. You also need to be generic.
+Please answer in the format I gave you. I will give you the persona now.
+
+{persona['persona']}"""
+    
+    response = client.chat.completions.create(
+        model="gpt-4o-mini",
+        messages=[
+            {"role": "user", "content": prompt},
+        ],
+    )
+
+    text_response = response.choices[0].message.content
+
+    persona['persona'] += text_response
+
 if __name__ == "__main__":
     
     #Example usage
     # print(return_persona_string())
 
-    personas = get_anes_rows(100)
+    personas = get_anes_rows(20)
     
+    # json.dump(personas, open("personas.json","w"))
+
+    dotenv.load_dotenv('../src/.env')
+
+    client = openai.Client()
+
+    for persona in personas:
+        extend_with_ai(persona, client)
+        print(persona['persona'])
+
     json.dump(personas, open("personas.json","w"))

@@ -91,10 +91,34 @@ class Agent():
                 ID: {i}
                 Title: {news_item['headline']}
                 Category: {news_item['category']}
-                Description: {news_item['short_description']}\n\n
+                Description: {news_item['short_description']}\n
             """
 
-        msg += """Choose exactly one of these headlines to share on your social media feed based on your persona, and write a comment of 10-50 words about that one headline in the style of your personality. [Write the number of the news item you choose, followed by your message. Do not repeat the headline. Do not use quotation marks. Do not introduce yourself. Use informal language. You may use sarcasm or irony, swear, criticize, threat, lie, and engage in personal attacks. You can also bring up a related topic that the post made you think of. You Do not start your message by describing your persona. Don't use hashtags.]"""
+        msg += """Choose exactly one of these headlines to share on your social media feed based on your persona, and write a comment of 10-50 words about that one headline in the style of your personality. [Write only the message. Introduce the news very shortly. You may choose news you do not agree with and share this vision. Do not use quotation marks. Do not introduce yourself. Use informal language. You may use sarcasm or irony, swear, criticize, threat, lie, and engage in personal attacks. You can also bring up a related topic that the post made you think of. Do not start your message by describing your persona. Don't use hashtags.]"""
 
         return self.get_response(msg)
-    
+
+    def perform_action(self, news_data: list, timeline: list) -> str:
+
+        msg = """You are presented with the following options. You have to choose exactly one option based on your persona.
+1. Choose exactly one of the headlines to share on your social media feed based on your persona, and write a comment of 10-50 words about that one headline in the style of your personality. [Write only the message. Don't repeat the headline, but introduce the topic briefly. You may choose news you do not agree with and share this vision. Do not use quotation marks. Do not introduce yourself. Use informal language. You may use sarcasm or irony, swear, criticize, threat, lie, and engage in personal attacks. You can also bring up a related topic that the post made you think of. Do not start your message by describing your persona. Don't use hashtags.]
+2. Choose exactly one of the posts from the timeline to repost on your social media feed based on your persona. [Only write down the message ID]
+3. Do nothing. [You can choose this option if you don't feel like sharing anything at the moment, or if you want to observe the platform for a while.]
+Reply with the number of the option you choose and then the content of your action.
+
+Here are the news headlines for option 1:\n"""
+
+        for i, news_item in enumerate(news_data, start=1):
+
+            msg += f"""ID: {i}\nTitle: {news_item['headline']}\nCategory: {news_item['category']}\nDescription: {news_item['short_description']}\n\n"""
+
+        msg += """Here are the messages on the timeline for option 2:\n"""
+
+        for post in timeline:
+
+            msg += str(post['post_content'])
+
+        # with open('msg.txt', 'w') as f:
+        #     f.write(msg)
+
+        return self.get_response(msg)

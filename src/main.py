@@ -28,10 +28,12 @@ if __name__ == "__main__":
     # Create an instance of the Agent class
     agent1 = Agent(model, persona_path)
     agent2 = Agent(model, persona_path)
+    agent3 = Agent(model, persona_path)
 
     # Register the agents with the platform
     platform.register_user(agent1)
     platform.register_user(agent2)
+    platform.register_user(agent3)
 
     print(platform.users)
 
@@ -60,3 +62,10 @@ if __name__ == "__main__":
 
     # Show the links of the platform
     print(platform.user_links)
+
+    # Agent 3 forms a link with Agent 2 and sees post of Agent 1
+    platform.link_users(agent3, agent2)
+    timeline = platform.get_timeline(3)
+
+    # Agent 3 performs an action -> post, repost or do nothing
+    print(agent3.perform_action(news_feed.get_random_news(10), timeline))
