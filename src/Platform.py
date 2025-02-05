@@ -96,11 +96,11 @@ class Platform():
                             ((0.075 / 1000000) * total_cached_tokens))
 
         return {
-            "users": self.generate_users_json(),
             "total_tokens_input": total_input_tokens,
             "total_tokens_output": total_output_tokens,
             "total_tokens_cached": total_cached_tokens,
             "predicted_cost": predicted_cost,
+            "users": self.generate_users_json(),
             "posts": self.generate_posts_json(),
             "user_links": self.user_links,
             "actions": self.actions
@@ -197,19 +197,25 @@ class Platform():
             "post_content": post
         })
 
-    def add_action(self, user_id: int, action: int, content: str):
+    def add_action(self, user_id: int, action: int, content: str, success: bool):
         """
         Adds action to the platform for logging purposes.
         """
         self.actions.append({
             "user_id": user_id,
             "action": action,
-            "content": content
+            "content": content,
+            'success': success
         })
 
     def parse_and_do_action(self, user_id: int, action: Action) -> None:
 
         agent = self.get_user(user_id)
+
+        if not agent:
+            print("User not found")
+            self.add_action(user_id, action.option, action.content, False)
+            return
         
         if action.option == 1:
             self.post(agent, action.content)
@@ -217,11 +223,16 @@ class Platform():
 
             try:
                 self.repost(agent, int(action.content), link_users=True)
-            except ValueError:
+            except:
                 print("Invalid post ID")
+                self.add_action(user_id, action.option, action.content, False)
+                return
         elif action.option == 3:
             pass
+        else:
+            print("Invalid action")
+            self.add_action(user_id, action.option, action.content, False)
 
-        self.add_action(user_id, action.option, action.content)
+        self.add_action(user_id, action.option, action.content, True)
 
     

@@ -72,7 +72,7 @@ if __name__ == "__main__":
 
     # Register 10 users for simulation
     simulation_size = 10
-    simulation_steps = 10
+    simulation_steps = 250
 
     [platform.register_user(Agent(model, persona_path)) for _ in range(simulation_size)]
     platform.initialize_random_links(2)
