@@ -450,6 +450,9 @@ def get_anes_rows(number_rows):
 
     # We select only people who ever use twitter
     df1 = df1.loc[df1['howOftenUseTwitter'].isin((1,2,3,4,5,6))]
+
+    # We select only people with age
+    df1 = df1.loc[df1['V201507x']>=0]
     
     #Remove the very small nr of people who did not answer to political affiliation
     # df1 = df1.loc[df1['V201231x']>0]
@@ -510,6 +513,7 @@ def get_anes_rows(number_rows):
         # In your spare time, you like to watch
         hobbies = {'V201631a':'American Idol','V201630r':'NCIS','V201631i':'Good Morning America','V201631r':'Saturday Night Live','V201632c':'Amor Eterno','V201633e':'The Dave Ramsey Show'}
         hobbies_liked = [v for k,v in hobbies.items() if d[k]==1]
+        l['tvPrograms'] = hobbies_liked
 
         # V201631a PRE: MENTION: TV PROG - AMERICAN IDOL (ABC)
         # V201630r PRE: MENTION: TV PROG - NCIS (CBS)
@@ -587,9 +591,17 @@ def get_anes_rows(number_rows):
                 hatelist.append(v)
             if d[k] <= 100 and d[k] >= 90:
                 lovelist.append(v)
+
+        l['loveList'] = lovelist
+        l['hateList'] = hatelist
         
         #Create persona string
         l['persona'] = ""
+
+        l['gender'] = d['gender']
+        l['maritalStatus'] = d['martialStatus']
+        l['income'] = d['income']
+        l['age'] = d['V201507x']
 
         if d['gender'] is not None:
             l['persona'] += f"You are {d['gender']}.\n"
@@ -614,10 +626,15 @@ def get_anes_rows(number_rows):
             l['persona'] += f"Age: {d['V201507x']}.\n" 
         
         religions = {1: 'Protestant', 2: 'Evangelical Protestant', 3: 'Black Protestant', 4: 'Protestant',  5: 'Catholic', 6: 'Christian', 7: 'Jewish', 9: 'not religious'}
-        l['V201458x'] = d['V201458x']
+        l['religion'] = d['V201458x']
         if d['V201458x'] in list(religions.keys()):
             l['persona'] += f"You are {religions[d['V201458x']]}.\n"
-        
+
+        l['state'] = d['state']
+        l['education'] = d['education']
+        l['race'] = d['race']
+        l['sexOrientation'] = d['sexOrientation']
+
         if d['state'] is not None:
             l['persona'] += f"You are from {d['state']}.\n"
         if d['education'] is not None: 
@@ -628,8 +645,6 @@ def get_anes_rows(number_rows):
             l['persona'] += f"You are {d['race']}.\n"
         if d['sexOrientation'] is not None: 
             l['persona'] += f"You are {d['sexOrientation']}.\n"
-
-        l['race'] = d['race'] 
         
         l['party'] = 'Democrat' if l['partisan'] < 0 else 'Republican' if l['partisan'] > 0 else 'Non-partisan'        
         
@@ -637,22 +652,28 @@ def get_anes_rows(number_rows):
         if d['V202545'] == 5: # V202023
             l['persona'] += "You never talk about politics.\n" #
             l['never_talk_politics'] = True
+        else:
+            l['never_talk_politics'] = False
         
-        l['party'] = 'Non-partisan'
-        l['partisan'] = 0
+        # l['party'] = 'Non-partisan'
+        # l['partisan'] = 0
         
         #Fishing
         if d['V202567'] == 1:
             l['persona'] += "You like to go fishing or hunting.\n" #
-                            
+
+        l['fishing'] = d['V202567']
+
     #They do talk about politics 
     # else:
-        l['never_talk_politics'] = False
         
         if d['vote2020'] in ['Donald Trump','Joe Biden']:
             l['persona'] += f"You voted for {d['vote2020']} in 2020.\n"
+            l['voted2020'] = True
+            l['voted2020_for'] = d['vote2020']
         else:
             l['persona'] += "You didn't vote in 2020.\n"
+            l['voted2020'] = False
             
             
         # OLD WAY OF ASSIGNING PARTY
@@ -682,6 +703,7 @@ def get_anes_rows(number_rows):
         if l['partisan'] >= 0.5:
             l['persona'] += 'You are a strong Republican.\n'
 
+        l['justifiedViolence'] = d['justifiedViolence']
         
         if d['justifiedViolence'] in [3,4,5]:
             l['persona'] += "You think political violence is justified.\n"
@@ -692,9 +714,12 @@ def get_anes_rows(number_rows):
         if len(hatelist)>0:
             l['persona'] += f'You hate {format_list(hatelist)}.\n'            
 
+
+        l['arguePolitics'] =d['V202545']== 1 or d['V202545']== 2
         #You post online a lot or always about politics, or you get into political argument in the last 12 months
         if d['V202545']== 1 or d['V202545']== 2: #d['V202024']== 1 or 
             l['persona'] += "You like to argue about politics.\n"
+
             
         if d['liberalConservative'] is not None:
                 l['persona'] += f'You consider yourself {d["liberalConservative"]}.\n' 
@@ -707,6 +732,10 @@ def get_anes_rows(number_rows):
         elif len(problems)>1:
             l['persona'] += f'You think the most important problems facing the country are {format_list(problems)}.\n'
 
+        l['importantProblems'] = problems
+
+        l['gunsOwned'] = d['gunsOwned']
+
         if d['gunsOwned'] > 0:
             l['persona'] += "You own guns.\n"
 
@@ -717,9 +746,9 @@ def get_anes_rows(number_rows):
         if len(hobbies_liked)>0:
             l['persona'] += f'You like to watch {format_list(hobbies_liked)} on TV.\n'
 
-        l['attribs'] = {key: d[key] for key in ['gender','state','education','feelingDemocratic','feelingRepublican','V202023','race','strongIdentif']}
-        l['attribs']['hobbies_liked'] = hobbies_liked
-        l['attribs']['media'] = l['media']
+        # l['attribs'] = {key: d[key] for key in ['gender','state','education','feelingDemocratic','feelingRepublican','V202023','race','strongIdentif']}
+        # l['attribs']['hobbies_liked'] = hobbies_liked
+        # l['attribs']['media'] = l['media']
         
         res.append(l)
 
@@ -736,7 +765,6 @@ def extend_with_ai(persona, client):
 
     prompt = f"""I am going to give you a persona of a person. I need you to fill in some other pieces:
 
-Your name is ....
 Your occupation is ....
 You like .....
 
@@ -761,7 +789,7 @@ if __name__ == "__main__":
     #Example usage
     # print(return_persona_string())
 
-    personas = get_anes_rows(20)
+    personas = get_anes_rows(1000)
     
     # json.dump(personas, open("personas.json","w"))
 
@@ -772,5 +800,6 @@ if __name__ == "__main__":
     for persona in personas:
         extend_with_ai(persona, client)
         print(persona['persona'])
+        print()
 
     json.dump(personas, open("personas.json","w"))

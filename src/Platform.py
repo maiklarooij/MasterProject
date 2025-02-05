@@ -1,6 +1,7 @@
 from datetime import datetime
 
-from Agent import Agent
+from Agent import Agent, Action
+import random
 
 class Post():
     def __init__(self, post_id: int, author: Agent, timestamp: datetime, content: str):
@@ -13,10 +14,20 @@ class Post():
         self.reposters = []
 
     def __str__(self):
-        return f"""ID: {self.post_id}\nPosted by: user with {self.author.followers}\nReposts: {self.reposts}\nContent: {self.content}"""
+        return f"""Post ID: {self.post_id}\nPosted by: user with {self.author.followers}\nReposts: {self.reposts}\nContent: {self.content}"""
     
     def __repr__(self):
         return f"User {self.author} posted: {self.content}"
+    
+    def json(self):
+        return {
+            "post_id": self.post_id,
+            "author": self.author.identifier,
+            "timestamp": self.timestamp,
+            "content": self.content,
+            "reposts": self.reposts,
+            "reposters": self.reposters
+        }
     
     def count_repost(self, reposter_id: int):
         self.reposters.append(reposter_id)
@@ -35,6 +46,65 @@ class Platform():
 
         # Of the form (user_id_link_from, user_id_link_to)
         self.user_links: list[(int, int)] = []
+
+        self.actions: list[dict] = []
+
+    def initialize_random_links(self, nr_links: int):
+        """
+        Cold-start: randomly link users to each other.
+        The fraction determines the fraction of users to link to.
+        """
+
+        for user in self.users:
+            
+            # Randomly select a fraction of the users to link to
+            linked_users = random.sample(self.users, nr_links)
+            for linked_user in linked_users:
+                if linked_user != user:
+                    self.link_users(linked_user, user)
+
+    def sample_user(self) -> Agent:
+        return random.choice(self.users)
+    
+    def generate_posts_json(self):
+
+        final_json = []
+
+        for post in self.posts:
+
+            final_json.append({
+                "post_id": post["post_id"],
+                "user_id": post["user_id"],
+                "time": post["time"],
+                "post_content": post["post_content"].json()
+            })
+
+        return final_json
+
+    def generate_users_json(self):
+
+        return [user.json() for user in self.users]
+    
+    def generate_log(self):
+
+        total_input_tokens = sum([user.used_tokens_input for user in self.users])
+        total_output_tokens = sum([user.used_tokens_output for user in self.users])
+        total_cached_tokens = sum([user.used_tokens_cached for user in self.users])
+
+        predicted_cost = ((0.6 / 1000000) * total_output_tokens) + \
+                            ((0.15 / 1000000) * (total_input_tokens - total_cached_tokens) + \
+                            ((0.075 / 1000000) * total_cached_tokens))
+
+        return {
+            "users": self.generate_users_json(),
+            "total_tokens_input": total_input_tokens,
+            "total_tokens_output": total_output_tokens,
+            "total_tokens_cached": total_cached_tokens,
+            "predicted_cost": predicted_cost,
+            "posts": self.generate_posts_json(),
+            "user_links": self.user_links,
+            "actions": self.actions
+        }
 
     def register_user(self, agent: Agent):
 
@@ -56,8 +126,16 @@ class Platform():
         return None
 
     def link_users(self, user_link_from: Agent, user_link_to: Agent):
+
+        # Link already exists
+        if self.has_link(user_link_from.identifier, user_link_to.identifier):
+            return
+
         self.user_links.append((user_link_from.identifier, user_link_to.identifier))
         user_link_to.increase_followers()
+
+    def has_link(self, user_id_1: int, user_id_2: int) -> bool:
+        return (user_id_1, user_id_2) in self.user_links
 
     def get_follower_count(self, user_id: int) -> int:
         """
@@ -67,7 +145,7 @@ class Platform():
         user = self.get_user(user_id)
         return user.followers
 
-    def get_timeline(self, user_id: int) -> list[dict]:
+    def get_timeline(self, user_id: int, size: int) -> list[dict]:
         """
         Gets the timeline -> all posts and reposts of users linked to the user.
         """
@@ -77,7 +155,12 @@ class Platform():
 
         # Only show posts and reposts by linked users
         # Exclude posts that are already reposted by the user
-        return [post for post in self.posts if post["user_id"] in linked_users and not post["post_content"].reposted_by(user_id)]
+        timeline = [post for post in self.posts if post["user_id"] in linked_users and not post["post_content"].reposted_by(user_id)]
+
+        # Sort timelime by time
+        timeline.sort(key=lambda x: x["time"], reverse=True)
+
+        return timeline[:size]
     
     def post(self, user: Agent, content: str):
         """
@@ -88,7 +171,6 @@ class Platform():
         post = Post(len(self.posts)+1, user, timestamp, content)
 
         # TODO: Time?
-        # TODO: Keep track of reposts
         self.posts.append({
             "post_id": post.post_id,
             "user_id": user.identifier,
@@ -96,7 +178,7 @@ class Platform():
             "post_content": post
         })
 
-    def repost(self, user: Agent, post_id: int):
+    def repost(self, user: Agent, post_id: int, link_users: bool = True):
         """
         User reposts a message.
         """
@@ -105,11 +187,41 @@ class Platform():
         post = self.get_post(post_id)
         post.count_repost(user.identifier)
 
+        if link_users:
+            self.link_users(user, post.author)
+
         self.posts.append({
             "post_id": len(self.posts)+1,
             "user_id": user.identifier,
             "time": timestamp,
             "post_content": post
         })
+
+    def add_action(self, user_id: int, action: int, content: str):
+        """
+        Adds action to the platform for logging purposes.
+        """
+        self.actions.append({
+            "user_id": user_id,
+            "action": action,
+            "content": content
+        })
+
+    def parse_and_do_action(self, user_id: int, action: Action) -> None:
+
+        agent = self.get_user(user_id)
+        
+        if action.option == 1:
+            self.post(agent, action.content)
+        elif action.option == 2:
+
+            try:
+                self.repost(agent, int(action.content), link_users=True)
+            except ValueError:
+                print("Invalid post ID")
+        elif action.option == 3:
+            pass
+
+        self.add_action(user_id, action.option, action.content)
 
     
