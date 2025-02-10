@@ -3,6 +3,8 @@ from datetime import datetime
 from Agent import Agent, Action
 import random
 
+from openai import OpenAI
+
 class Post():
     def __init__(self, post_id: int, author: Agent, timestamp: datetime, content: str):
         self.post_id = post_id
@@ -14,7 +16,7 @@ class Post():
         self.reposters = []
 
     def __str__(self):
-        return f"""Post ID: {self.post_id}\nPosted by: user with {self.author.followers}\nReposts: {self.reposts}\nContent: {self.content}"""
+        return f"""Post ID: {self.post_id}\nPosted by: user with {self.author.followers} followers\nReposts: {self.reposts}\nContent: {self.content}"""
     
     def __repr__(self):
         return f"User {self.author} posted: {self.content}"
@@ -44,10 +46,16 @@ class Platform():
         # Of the form {"user_id": int, "time": int, "content": str, "repost": bool, "repost_user_id": int}
         self.posts: list[dict] = []
 
+        self.raw_posts: list[Post] = []
+
         # Of the form (user_id_link_from, user_id_link_to)
         self.user_links: list[(int, int)] = []
 
         self.actions: list[dict] = []
+
+    def set_client(self, client: OpenAI | None):
+        for user in self.users:
+            user.llm = client
 
     def initialize_random_links(self, nr_links: int):
         """
@@ -102,6 +110,7 @@ class Platform():
             "predicted_cost": predicted_cost,
             "users": self.generate_users_json(),
             "posts": self.generate_posts_json(),
+            "raw_posts": [post.json() for post in self.raw_posts],
             "user_links": self.user_links,
             "actions": self.actions
         }
@@ -130,6 +139,10 @@ class Platform():
         # Link already exists
         if self.has_link(user_link_from.identifier, user_link_to.identifier):
             return
+        
+        # Don't allow self links
+        if user_link_from == user_link_to:
+            return
 
         self.user_links.append((user_link_from.identifier, user_link_to.identifier))
         user_link_to.increase_followers()
@@ -155,7 +168,8 @@ class Platform():
 
         # Only show posts and reposts by linked users
         # Exclude posts that are already reposted by the user
-        timeline = [post for post in self.posts if post["user_id"] in linked_users and not post["post_content"].reposted_by(user_id)]
+        timeline = [post for post in self.posts if post["user_id"] in linked_users and not post["post_content"].reposted_by(user_id)
+                    and not post['post_content'].author.identifier == user_id]
 
         # Sort timelime by time
         timeline.sort(key=lambda x: x["time"], reverse=True)
@@ -170,7 +184,8 @@ class Platform():
         timestamp = datetime.now()
         post = Post(len(self.posts)+1, user, timestamp, content)
 
-        # TODO: Time?
+        self.raw_posts.append(post)
+
         self.posts.append({
             "post_id": post.post_id,
             "user_id": user.identifier,
@@ -185,6 +200,13 @@ class Platform():
 
         timestamp = datetime.now()
         post = self.get_post(post_id)
+
+        if post.author.identifier == user.identifier:
+            raise Exception(f"User {user.identifier} tries to repost its own post {post_id}!")
+
+        if post.reposted_by(user.identifier):
+            raise Exception(f"User {user.identifier} has already reposted post {post_id}!")
+
         post.count_repost(user.identifier)
 
         if link_users:
@@ -197,42 +219,44 @@ class Platform():
             "post_content": post
         })
 
-    def add_action(self, user_id: int, action: int, content: str, success: bool):
+    def add_action(self, user_id: int, action: Action, success: bool, prompt: str):
         """
         Adds action to the platform for logging purposes.
         """
         self.actions.append({
             "user_id": user_id,
-            "action": action,
-            "content": content,
-            'success': success
+            "action": action.option,
+            "content": action.content,
+            'success': success,
+            'explanation': action.explanation,
+            "prompt": prompt
         })
 
-    def parse_and_do_action(self, user_id: int, action: Action) -> None:
+    def parse_and_do_action(self, user_id: int, action: Action, prompt: str) -> None:
 
         agent = self.get_user(user_id)
 
         if not agent:
             print("User not found")
-            self.add_action(user_id, action.option, action.content, False)
+            self.add_action(user_id, action, False, prompt)
             return
         
-        if action.option == 1:
+        if action.option == 2:
             self.post(agent, action.content)
-        elif action.option == 2:
+        elif action.option == 1:
 
             try:
                 self.repost(agent, int(action.content), link_users=True)
-            except:
-                print("Invalid post ID")
-                self.add_action(user_id, action.option, action.content, False)
+            except Exception as e:
+                print("Invalid post ID: ", e)
+                self.add_action(user_id, action, False, prompt)
                 return
         elif action.option == 3:
             pass
         else:
             print("Invalid action")
-            self.add_action(user_id, action.option, action.content, False)
+            self.add_action(user_id, action, False, prompt)
 
-        self.add_action(user_id, action.option, action.content, True)
+        self.add_action(user_id, action, True, prompt)
 
     

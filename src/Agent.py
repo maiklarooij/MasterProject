@@ -1,21 +1,24 @@
 import json
 import random
 
-from camel.agents import ChatAgent
-from camel.models import ModelFactory
-from camel.messages.base import BaseMessage
 from pydantic import BaseModel
+
+from openai import OpenAI
+from openai.types.chat import ParsedChoice
 
 class Action(BaseModel):
     option: int
     content: str
+    explanation: str
 
 class Agent():
 
-    def __init__(self, model: ModelFactory, persona_path: str):
+    def __init__(self, model: str, persona_path: str):
         
         self.persona = self._generate_persona(persona_path)
-        self.llm = ChatAgent(model=model, system_message=self._generate_sys_msg())
+
+        self.llm = None
+        self.model = model
 
         self.identifier = 0
         self.followers = 0
@@ -45,7 +48,7 @@ class Agent():
 
         sys_msg = f"""You are a user of the X social media platform. 
                     This is a platform where users share opinions and thoughts on topics of interest in the form of posts.
-                    You are able to share your own posts and repost others' posts.
+                    You main goal is to repost others' posts and you are also able to share your own posts.
 
                     Here is a description of your persona:
                     {self.persona['persona']}
@@ -66,18 +69,27 @@ class Agent():
     def increase_followers(self):
         self.followers += 1
     
-    def get_response(self, message: str, response_format = None) -> BaseMessage:
+    def get_response(self, message: str, response_format = None) -> ParsedChoice:
         """
         Get the response from the agent to the given message.
         """
 
-        response = self.llm.step(message, response_format=response_format)
+        response = self.llm.beta.chat.completions.parse(
+            model=self.model,
+            messages = [
+                {"role": "system", "content": self._generate_sys_msg()},
+                {"role": "user", "content": message}
+            ],
+            response_format=response_format
 
-        self.used_tokens_input += response.info['usage']['prompt_tokens']
-        self.used_tokens_output += response.info['usage']['completion_tokens']
-        self.used_tokens_cached += response.info['usage']['prompt_tokens_details']['cached_tokens']
+        )
+
+
+        self.used_tokens_input += response.usage.prompt_tokens
+        self.used_tokens_output += response.usage.completion_tokens
+        self.used_tokens_cached += response.usage.prompt_tokens_details.cached_tokens
         
-        return response.msgs[0]
+        return response.choices[0]
     
     def news_post(self, news_data: dict) -> str:
         """
@@ -99,8 +111,6 @@ class Agent():
             If you decide to not share your thoughts, reply with 'no'. Then explain why you chose not to share your thoughts.
             If you decide to share your thoughts, reply with the content of your post. Then, explain why you chose to share your thoughts.
         """
-
-        # TODO: Check if there are response templates
         
         return self.get_response(msg).content
     
@@ -127,25 +137,26 @@ class Agent():
     def perform_action(self, news_data: list, timeline: list) -> Action:
 
         msg = """You are presented with the following options. You have to choose exactly one option based on your persona.
-1. Choose exactly one of the headlines to share on your social media feed based on your persona, and write a comment of 10-50 words about that one headline in the style of your personality. [Write only the message. Don't repeat the headline, but introduce the topic briefly. You may choose news you do not agree with and share this vision. Do not use quotation marks. Do not introduce yourself. Use informal language. You may use sarcasm or irony, swear, criticize, threat, lie, and engage in personal attacks. You can also bring up a related topic that the post made you think of. Do not start your message by describing your persona. Don't use hashtags.]
-2. Choose exactly one of the posts from the timeline to repost on your social media feed based on your persona. [Only write down the message ID as content!]
+1. Choose exactly one of the posts from the timeline to repost on your social media feed that relates to your persona. [You can't repost if there are no posts on the timeline. Only write down the message ID as content!]
+2. Choose exactly one of the headlines to share on your social media feed based on your persona, and write a comment of 10-50 words about that one headline in the style of your personality. [Write only the message you want to share as content. Don't repeat the title of the headline, but introduce the topic briefly. You may choose news you agree or do not agree with and share this vision. Do not use quotation marks. Do not introduce yourself. Use informal language. You may write a positive message, but you may also use sarcasm or irony, swear, criticize, threat, lie, and engage in personal attacks. You can also bring up a related topic that the post made you think of. Do not start your message by describing your persona. Don't use hashtags.]
 3. Do nothing. [You can choose this option if you don't feel like sharing anything at the moment, or if you want to observe the platform for a while.]
-Reply in JSON format.
+Also provide an explanation of one sentence about your choice.
+Reply in JSON format.\n\n"""
 
-Here are the news headlines for option 1:\n"""
+        msg += """Here are the messages on the timeline for option 1:\n"""
+
+        for post in timeline:
+
+            msg += str(post['post_content'])
+            msg += "\n\n"
+
+        msg += """Here are the news headlines for option 2:\n"""
 
         for i, news_item in enumerate(news_data, start=1):
 
             msg += f"""ID: {i}\nTitle: {news_item['headline']}\nCategory: {news_item['category']}\nDescription: {news_item['short_description']}\n\n"""
 
-        msg += """Here are the messages on the timeline for option 2:\n"""
-
-        for post in timeline:
-
-            msg += str(post['post_content'])
-
         # Get response and handle the action
         response = self.get_response(msg, response_format=Action)
-        # self.parse_and_do_action(response.parsed, platform)
 
-        return response.parsed
+        return response.message.parsed, msg
