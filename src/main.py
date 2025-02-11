@@ -88,7 +88,7 @@ if __name__ == "__main__":
 
     # Register 10 users for simulation
     simulation_size = 25
-    simulation_steps = 250
+    simulation_steps = 1000
     run_id = 6
     model = "gpt-4o-mini"
     client = OpenAI()
