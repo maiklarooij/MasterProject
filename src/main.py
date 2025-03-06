@@ -2,6 +2,7 @@ import dotenv
 import os
 import json
 import pickle
+import random
 
 from openai import OpenAI
 
@@ -12,6 +13,9 @@ from NewsFeed import NewsFeed
 dotenv.load_dotenv()
 
 def log_action(user, action):
+    """
+    Log the action taken by the user to the console.
+    """
 
     log_msg = f"User {user.identifier} chose action "
 
@@ -28,76 +32,57 @@ def log_action(user, action):
 
     return log_msg
 
+def select_users(persona_path, n):
+    """
+    Create a sample of users for the simulation from the persona file.
+    """
+
+    # According to Gallup, 45% of Americans identify as Democrats, 46% as Republicans, and 9% as other (2025)
+    fraction_democrat = 0.45
+    fraction_republican = 0.46
+    fraction_non_partisan = 0.09
+
+    users = json.load(open(persona_path, 'r'))
+
+    democrat_users = [user for user in users if user['party'] == 'Democrat']
+    republican_users = [user for user in users if user['party'] == 'Republican']
+    non_partisan_users = [user for user in users if user['party'] == 'Non-partisan']
+
+    # Randomly sample users from each group
+    democrat_sample = random.sample(democrat_users, int(n * fraction_democrat))
+    republican_sample = random.sample(republican_users, int(n * fraction_republican))
+    non_partisan_sample = random.sample(non_partisan_users, int(n * fraction_non_partisan))
+
+    return democrat_sample + republican_sample + non_partisan_sample
+
+
 if __name__ == "__main__":
 
-    # Define the model, gpt-4o-mini
-    # model = ModelFactory.create(
-    #     model_platform=ModelPlatformType.OPENAI,
-    #     model_type=ModelType.GPT_4O_MINI,
-    #     model_config_dict=ChatGPTConfig().as_dict()
-    # )
-
     # Define the path to the persona file
-    persona_path = os.path.join(os.getcwd(), 'personas.json')
-
-    platform = Platform()
-
-    # Create an instance of the Agent class
-    # agent1 = Agent(model, persona_path)
-    # agent2 = Agent(model, persona_path)
-    # agent3 = Agent(model, persona_path)
-
-    # # Register the agents with the platform
-    # platform.register_user(agent1)
-    # platform.register_user(agent2)
-    # platform.register_user(agent3)
-
-    # print(platform.users)
-
+    persona_path = os.path.join(os.getcwd(), 'personas_with_bio.json')
     news_feed = NewsFeed('../News/News_Category_Dataset_v3.json')
 
-    # news_items = news_feed.get_random_news(10)
+    # Set parameters for the simulation
+    simulation_size = 100
+    simulation_steps = 1500
+    run_id = 12
+
+    # Set strategies for the platform
+    user_link_strategy = "on_repost_bio"
+    timeline_select_strategy = "random_weighted"
+
+    platform = Platform(user_link_strategy=user_link_strategy, timeline_select_strategy=timeline_select_strategy)
     
-    # # Agent 1 posts about a news item
-    # post1 = agent1.multiple_news_post(news_items)
-    # print(agent1)
-    # print(post1)
-    # print()
+    # Ensure the right fraction of Democrats, Republicans, and non-partisans
+    selected_users = select_users(persona_path, n=simulation_size)
 
-    # platform.post(agent1, post1)
+    # Register users
+    [platform.register_user(Agent(model, user)) for user in selected_users]
 
-    # # Agent 2 reposts and forms a link to Agent 1
-    # platform.repost(agent2, 1)
-    # platform.link_users(agent2, agent1)
-
-    # # Show all posts
-    # print(platform.posts)
-
-    # # Show the timeline of Agent 2
-    # print(platform.get_timeline(2))
-
-    # # Show the links of the platform
-    # print(platform.user_links)
-
-    # # Agent 3 forms a link with Agent 2 and sees post of Agent 1
-    # platform.link_users(agent3, agent2)
-    # timeline = platform.get_timeline(3)
-
-    # # Agent 3 performs an action -> post, repost or do nothing
-    # print(agent3.perform_action(news_feed.get_random_news(10), timeline))
-
-    # Register 10 users for simulation
-    simulation_size = 25
-    simulation_steps = 1000
-    run_id = 6
+    # Set client for platform to OpenAI gpt-4o-mini
     model = "gpt-4o-mini"
     client = OpenAI()
-
-    [platform.register_user(Agent(model, persona_path)) for _ in range(simulation_size)]
     platform.set_client(client)
-    platform.initialize_random_links(2)
-
-    print(platform.users)
 
     for _ in range(simulation_steps):
 
@@ -111,6 +96,9 @@ if __name__ == "__main__":
         platform.parse_and_do_action(user.identifier, action, prompt)
 
         print(log_action(user, action))
+
+        # Add snapshot of the platform for analysis
+        platform.add_snapshot()
 
     json.dump(platform.generate_log(), open(f'../results/log_{run_id}.json', 'w'), indent=4, default=str)
 

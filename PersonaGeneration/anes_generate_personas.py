@@ -2,6 +2,15 @@ import pandas as pd
 import json
 import openai
 import dotenv
+from pydantic import BaseModel
+from typing import List
+import random
+
+# Create response format
+class Response(BaseModel):
+    occupations: List[str]
+    hobbies_interests: List[List[str]]
+
 #Functions for generating GPT strings from ANES 
 def format_list(words):
     if len(words) == 0:
@@ -449,7 +458,7 @@ def get_anes_rows(number_rows):
 
 
     # We select only people who ever use twitter
-    df1 = df1.loc[df1['howOftenUseTwitter'].isin((1,2,3,4,5,6))]
+    # df1 = df1.loc[df1['howOftenUseTwitter'].isin((1,2,3,4,5,6))]
 
     # We select only people with age
     df1 = df1.loc[df1['V201507x']>=0]
@@ -466,7 +475,7 @@ def get_anes_rows(number_rows):
     
     ## Function that generates N random people, with WEIGHTING based on the ANES weighting    
     # Note that replacement is key here!
-    random_rows = df1.sample(n=number_rows,weights = df1['V200010b'], replace=True) if number_rows is not None else df1
+    random_rows = df1.sample(n=number_rows, replace=True) if number_rows is not None else df1
     
     random_dicts = random_rows.to_dict(orient="records")
 
@@ -508,7 +517,7 @@ def get_anes_rows(number_rows):
         # 4. A few times each week: 5
         # 5. About once a week: 2
         # 6. Once or twice a month: 1
-        l['howOftenUseTwitter'] = {1:50, 2:30, 3:14, 4: 5, 5:2, 6:1}[d['howOftenUseTwitter']]
+        # l['howOftenUseTwitter'] = {1:50, 2:30, 3:14, 4: 5, 5:2, 6:1}[d['howOftenUseTwitter']]
         
         # In your spare time, you like to watch
         hobbies = {'V201631a':'American Idol','V201630r':'NCIS','V201631i':'Good Morning America','V201631r':'Saturday Night Live','V201632c':'Amor Eterno','V201633e':'The Dave Ramsey Show'}
@@ -763,43 +772,73 @@ def return_persona_string():
 
 def extend_with_ai(persona, client):
 
-    prompt = f"""I am going to give you a persona of a person. I need you to fill in some other pieces:
+    prompt = f"""I am going to give you a persona of a person. I need you to fill in some other pieces, and generate the options THREE times:
 
-Your occupation is ....
-You like .....
+- Your occuption
+- A list of your hobbies / interests
 
-You need to be creative. It does not have to be fully based on the persona. You also need to be generic.
+Put them in lists
+
+Please base it VERY LOOSELY on the persona. It does not need to align with the political stance and important problems.
+Stay away from 'community' or 'volunteering'. Use your information on popular hobbies and occupations.
 Please answer in the format I gave you. I will give you the persona now.
+
+{persona['persona']}"""
+    
+    response = client.beta.chat.completions.parse(
+        model="gpt-4o-mini",
+        messages=[
+            {"role": "system", "content": prompt},
+        ],
+        response_format=Response
+    )
+
+    response_class = response.choices[0].message.parsed
+
+    occupations = response_class.occupations
+    hobbies_interests = response_class.hobbies_interests
+
+    chosen_occupation = random.choice(occupations)
+    chosen_hobbies_interests = random.choice(hobbies_interests)
+
+    persona['persona'] += f"Your occupation is {chosen_occupation}.\n"
+    persona['persona'] += f"You like {format_list(chosen_hobbies_interests)}.\n"
+
+    # persona['persona'] += text_response
+
+def add_biography(persona, client):
+
+    prompt = f"""I am going to give you a persona of a person. Write a short introduction of 1-2 sentences as if you are the person.
 
 {persona['persona']}"""
     
     response = client.chat.completions.create(
         model="gpt-4o-mini",
         messages=[
-            {"role": "user", "content": prompt},
-        ],
+            {"role": "system", "content": prompt},
+        ]
     )
 
-    text_response = response.choices[0].message.content
-
-    persona['persona'] += text_response
+    persona['biography'] = response.choices[0].message.content
 
 if __name__ == "__main__":
     
     #Example usage
     # print(return_persona_string())
 
-    personas = get_anes_rows(1000)
+    # personas = get_anes_rows(2000)
     
     # json.dump(personas, open("personas.json","w"))
 
     dotenv.load_dotenv('../src/.env')
 
-    client = openai.Client()
+    client = openai.OpenAI()
+
+    personas = json.load(open("personas.json"))
 
     for persona in personas:
-        extend_with_ai(persona, client)
-        print(persona['persona'])
+        add_biography(persona, client)
+        print(persona['biography'])
         print()
 
-    json.dump(personas, open("personas.json","w"))
+    json.dump(personas, open("personas_with_bio.json","w"))

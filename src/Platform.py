@@ -22,6 +22,9 @@ class Post():
         return f"User {self.author} posted: {self.content}"
     
     def json(self):
+        """
+        Return the post as a JSON object for logging purposes.
+        """
         return {
             "post_id": self.post_id,
             "author": self.author.identifier,
@@ -32,49 +35,80 @@ class Post():
         }
     
     def count_repost(self, reposter_id: int):
+        """
+        Register a repost of the post by a user.
+        """
         self.reposters.append(reposter_id)
         self.reposts += 1
 
     def reposted_by(self, reposter_id: int):
+        """
+        Returns True if the post has been reposted by the user, else False.
+        """
         return reposter_id in self.reposters
 
 class Platform():
 
-    def __init__(self):
+    def __init__(self, user_link_strategy: str = "on_repost", timeline_select_strategy: str = "random"):
+        
+        # All users on the platform
         self.users: list[Agent] = []
 
-        # Of the form {"user_id": int, "time": int, "content": str, "repost": bool, "repost_user_id": int}
+        # Of the form {"user_id": int, "post_id": int, "post_content": Post}
+        # All posts, including reposts
         self.posts: list[dict] = []
 
+        # Only posts written by users
         self.raw_posts: list[Post] = []
 
         # Of the form (user_id_link_from, user_id_link_to)
         self.user_links: list[(int, int)] = []
 
+        # Register all actions on the platform
         self.actions: list[dict] = []
 
+        # Keep track of network after each iteration for analysis
+        self.network_snapshots = []
+
+        # User link strategy: when to link users
+        # on_repost: link users when one user reposts another user's post
+        # on_repost_bio: link users when user decides to follow based on reading bio after reposting
+        if user_link_strategy not in ['on_repost', 'on_repost_bio']:
+            raise Exception("Invalid user link strategy")
+        self.user_link_strategy = user_link_strategy
+
+        # Timeline selection strategy: how to select posts for the timeline
+        # random: randomly select posts
+        # random_weighted: randomly select posts with weights based on reposts and followers
+        if timeline_select_strategy not in ['random', 'random_weighted']:
+            raise Exception("Invalid timeline selection strategy")
+        self.timeline_select_strategy = timeline_select_strategy
+
     def set_client(self, client: OpenAI | None):
+        """
+        Set the client for the platform.
+        Default will be OpenAI's GPT-4o-mini for this project.
+        """
         for user in self.users:
             user.llm = client
 
-    def initialize_random_links(self, nr_links: int):
-        """
-        Cold-start: randomly link users to each other.
-        The fraction determines the fraction of users to link to.
-        """
-
-        for user in self.users:
-            
-            # Randomly select a fraction of the users to link to
-            linked_users = random.sample(self.users, nr_links)
-            for linked_user in linked_users:
-                if linked_user != user:
-                    self.link_users(linked_user, user)
-
     def sample_user(self) -> Agent:
+        """
+        Returns a random user from the platform.
+        Used for deciding which user is allowed to take an action in a simulation step.
+        """
         return random.choice(self.users)
     
+    def add_snapshot(self):
+        """
+        Create a snapshot of the network after each simulation step for analysis.
+        """
+        self.network_snapshots.append({'users': [user.json(include_persona=False) for user in self.users], 'connections': [link for link in self.user_links]})
+    
     def generate_posts_json(self):
+        """
+        Generate JSON object for all posts on the platform.
+        """
 
         final_json = []
 
@@ -90,10 +124,16 @@ class Platform():
         return final_json
 
     def generate_users_json(self):
+        """
+        Generate JSON object for all users on the platform.
+        """
 
-        return [user.json() for user in self.users]
+        return [user.json(include_persona=True) for user in self.users]
     
     def generate_log(self):
+        """
+        Generate a log (JSON) of the platform for analysis.
+        """
 
         total_input_tokens = sum([user.used_tokens_input for user in self.users])
         total_output_tokens = sum([user.used_tokens_output for user in self.users])
@@ -112,22 +152,33 @@ class Platform():
             "posts": self.generate_posts_json(),
             "raw_posts": [post.json() for post in self.raw_posts],
             "user_links": self.user_links,
-            "actions": self.actions
+            "actions": self.actions,
+            "network_snapshots": self.network_snapshots
         }
 
     def register_user(self, agent: Agent):
+        """
+        Add a user to the platform.
+        """
 
-        # TODO: ID should be unique
         agent.identifier = len(self.users)+1
         self.users.append(agent)
 
     def get_user(self, user_id: int) -> Agent:
+        """
+        Returns the user with the given user_id.
+        Returns None if the user is not found.
+        """
         for user in self.users:
             if user.identifier == user_id:
                 return user
         return None
     
     def get_post(self, post_id: int) -> Post:
+        """
+        Returns the post with the given post_id.
+        Returns None if the post is not found.
+        """
         for post in self.posts:
             if post["post_id"] == post_id:
                 return post["post_content"]
@@ -135,6 +186,9 @@ class Platform():
         return None
 
     def link_users(self, user_link_from: Agent, user_link_to: Agent):
+        """
+        Link two users on the platform.
+        """
 
         # Link already exists
         if self.has_link(user_link_from.identifier, user_link_to.identifier):
@@ -144,10 +198,14 @@ class Platform():
         if user_link_from == user_link_to:
             return
 
+        # Register link and increase follower count
         self.user_links.append((user_link_from.identifier, user_link_to.identifier))
         user_link_to.increase_followers()
 
     def has_link(self, user_id_1: int, user_id_2: int) -> bool:
+        """
+        Returns True if the users are linked on the platform (user_id_1 follows user_id_2), else False.
+        """
         return (user_id_1, user_id_2) in self.user_links
 
     def get_follower_count(self, user_id: int) -> int:
@@ -157,10 +215,50 @@ class Platform():
 
         user = self.get_user(user_id)
         return user.followers
+    
+    def get_timeline_recommended_part(self, user_id: int, size: int = 5) -> list[dict]:
+        """
+        Create a part of the timeline with recommended posts.
+        Strategies (self.timeline_select_strategy):
+        - random: randomly select posts
+        - random_weighted: randomly select posts with weights based on reposts and followers
+        """
+
+        # Get the id's of the users linked to the user
+        linked_users = [link[1] for link in self.user_links if link[0] == user_id]
+
+        # Get all posts of linked users
+        posts_following = [post for post in self.posts if post["user_id"] in linked_users and not post["post_content"].reposted_by(user_id)
+                    and not post['post_content'].author.identifier == user_id]
+
+        if self.timeline_select_strategy == 'random':
+            random_part = [post for post in self.posts if post['post_content'].post_id not in [post['post_content'].post_id for post in posts_following]
+                        and not post['post_content'].author.identifier == user_id and not post['post_content'].reposted_by(user_id)]
+            random_part = random.sample(random_part, min(size, len(random_part)))
+            return random_part
+        elif self.timeline_select_strategy == 'random_weighted':
+            random_part = [post for post in self.posts if post['post_content'].post_id not in [post['post_content'].post_id for post in posts_following]
+                        and not post['post_content'].author.identifier == user_id and not post['post_content'].reposted_by(user_id)]
+            
+            if len(random_part) == 0:
+                return []
+            
+            # Posts with more reposts and by users with more followers are more likely to be recommended
+            total_score = sum([post['post_content'].reposts + post['post_content'].author.followers for post in random_part])
+            if total_score == 0:
+                weights = [1/len(random_part) for post in random_part]
+            else:
+                weights = [(post['post_content'].reposts + post['post_content'].author.followers) / total_score for post in random_part]
+            
+            random_part = random.choices(random_part, weights=weights, k=min(size, len(random_part)))
+
+            return random_part
 
     def get_timeline(self, user_id: int, size: int) -> list[dict]:
         """
-        Gets the timeline -> all posts and reposts of users linked to the user.
+        Creates a timeline for a user. It consists of:
+        - 5 most recent posts by users than the user follows
+        - 5 posts from the platform recommended by the platform (with a strategy set in self.timeline_select_strategy)
         """
 
         # Get the id's of the users linked to the user
@@ -168,13 +266,17 @@ class Platform():
 
         # Only show posts and reposts by linked users
         # Exclude posts that are already reposted by the user
-        timeline = [post for post in self.posts if post["user_id"] in linked_users and not post["post_content"].reposted_by(user_id)
+        following_part = [post for post in self.posts if post["user_id"] in linked_users and not post["post_content"].reposted_by(user_id)
                     and not post['post_content'].author.identifier == user_id]
 
         # Sort timelime by time
+        following_part.sort(key=lambda x: x["time"], reverse=True)
+
+        # Combine 5 posts of linked users with 5 recommended posts
+        timeline = following_part[:5] + self.get_timeline_recommended_part(user_id, size=5)
         timeline.sort(key=lambda x: x["time"], reverse=True)
 
-        return timeline[:size]
+        return timeline
     
     def post(self, user: Agent, content: str):
         """
@@ -193,7 +295,7 @@ class Platform():
             "post_content": post
         })
 
-    def repost(self, user: Agent, post_id: int, link_users: bool = True):
+    def repost(self, user: Agent, post_id: int):
         """
         User reposts a message.
         """
@@ -209,8 +311,17 @@ class Platform():
 
         post.count_repost(user.identifier)
 
-        if link_users:
+        if self.user_link_strategy == "on_repost":
             self.link_users(user, post.author)
+        elif self.user_link_strategy == "on_repost_bio":
+            should_link, explanation = user.link_with_user_on_bio(post.author, post.content)
+            if should_link:
+                self.link_users(user, post.author)
+                print(f"User {user.identifier} linked to user {post.author.identifier}")
+                print(f"Explanation: {explanation}")
+            else:
+                print(f"User {user.identifier} chose not to link to user {post.author.identifier}")
+                print(f"Explanation: {explanation}")
 
         self.posts.append({
             "post_id": len(self.posts)+1,
@@ -233,6 +344,9 @@ class Platform():
         })
 
     def parse_and_do_action(self, user_id: int, action: Action, prompt: str) -> None:
+        """
+        Based on the action chosen by the user, perform the action.
+        """
 
         agent = self.get_user(user_id)
 
@@ -246,7 +360,7 @@ class Platform():
         elif action.option == 1:
 
             try:
-                self.repost(agent, int(action.content), link_users=True)
+                self.repost(agent, int(action.content))
             except Exception as e:
                 print("Invalid post ID: ", e)
                 self.add_action(user_id, action, False, prompt)
@@ -259,4 +373,3 @@ class Platform():
 
         self.add_action(user_id, action, True, prompt)
 
-    

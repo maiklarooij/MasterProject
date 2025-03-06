@@ -11,11 +11,15 @@ class Action(BaseModel):
     content: str
     explanation: str
 
+class BooleanAction(BaseModel):
+    choice: str
+    explanation: str
+
 class Agent():
 
-    def __init__(self, model: str, persona_path: str):
+    def __init__(self, model: str, persona: dict = None):
         
-        self.persona = self._generate_persona(persona_path)
+        self.persona = persona
 
         self.llm = None
         self.model = model
@@ -36,6 +40,7 @@ class Agent():
     def _generate_persona(self, persona_path: str) -> str:
         """
         From a list of personas, randomly select one to use as the agent's persona.
+        Not used anymore due to the persona being passed as an argument to enforce consistency.
         """
         
         persona_list = json.load(open(persona_path, 'r'))
@@ -56,17 +61,28 @@ class Agent():
 
         return sys_msg
     
-    def json(self):
-        return {
+    def json(self, include_persona: bool = False):
+        """
+        Return the agent's data in JSON format.
+        """
+        
+        result = {
             "identifier": self.identifier,
             "followers": self.followers,
             "used_tokens_input": self.used_tokens_input,
             "used_tokens_output": self.used_tokens_output,
-            "used_tokens_cached": self.used_tokens_cached,
-            "persona": self.persona
+            "used_tokens_cached": self.used_tokens_cached
         }
+
+        if include_persona:
+            result['persona'] = self.persona
+
+        return result
     
     def increase_followers(self):
+        """
+        Increase the number of followers by 1.
+        """
         self.followers += 1
     
     def get_response(self, message: str, response_format = None) -> ParsedChoice:
@@ -84,57 +100,42 @@ class Agent():
 
         )
 
-
+        # Keep track of the tokens used for cost analysis
         self.used_tokens_input += response.usage.prompt_tokens
         self.used_tokens_output += response.usage.completion_tokens
         self.used_tokens_cached += response.usage.prompt_tokens_details.cached_tokens
         
         return response.choices[0]
     
-    def news_post(self, news_data: dict) -> str:
+    def link_with_user_on_bio(self, other_agent: 'Agent', post_content: str) -> str:
         """
-        Generate a news post from the given news data.
+        Supply the bio of another agent and let the user decide if they want to follow them.
         """
 
         msg = f"""
-            You stumble upon the following piece of news:
-            Title: {news_data['headline']}
-            Category: {news_data['category']}
-            Description: {news_data['short_description']}
+            You reposted this post:
+            {post_content}
 
-            You are going to:
-            1. Choose critically if you want to share your thoughts on the news.
-            2. If you choose to share your thoughts, you will write a post about it, limited to 280 characters.
+            You view the profile of the poster.
+            Based on your beliefs, interests and personality, would you like to follow this user?
+            User ID: {other_agent.identifier}
+            Followers: {other_agent.followers}
+            Bio: {other_agent.persona['biography']}
 
-            The post may be a little informal.
-
-            If you decide to not share your thoughts, reply with 'no'. Then explain why you chose not to share your thoughts.
-            If you decide to share your thoughts, reply with the content of your post. Then, explain why you chose to share your thoughts.
+            Reply with 'yes' or 'no'. Also provide a short explanation for your choice.
         """
-        
-        return self.get_response(msg).content
+
+        response = self.get_response(msg, BooleanAction).message.parsed
+
+        return True if response.choice.lower() == 'yes' else False, response.explanation
     
-    def multiple_news_post(self, news_data: list) -> str:
-
-        msg = """
-            You stumble upon the following pieces of news:
-            """
-        
-        for i, news_item in enumerate(news_data, start=1):
-
-            msg += f"""
-                ID: {i}
-                Title: {news_item['headline']}
-                Category: {news_item['category']}
-                Description: {news_item['short_description']}\n
-            """
-
-        msg += """Choose exactly one of these headlines to share on your social media feed based on your persona, and write a comment of 10-50 words about that one headline in the style of your personality. [Write only the message. Introduce the news very shortly. You may choose news you do not agree with and share this vision. Do not use quotation marks. Do not introduce yourself. Use informal language. You may use sarcasm or irony, swear, criticize, threat, lie, and engage in personal attacks. You can also bring up a related topic that the post made you think of. Do not start your message by describing your persona. Don't use hashtags.]"""
-
-        return self.get_response(msg).content
-
-
     def perform_action(self, news_data: list, timeline: list) -> Action:
+        """
+        The user is presented with a set of options to choose from based on their persona.
+        - Repost a post from the timeline
+        - Share a news headline with a comment
+        - Do nothing
+        """
 
         msg = """You are presented with the following options. You have to choose exactly one option based on your persona.
 1. Choose exactly one of the posts from the timeline to repost on your social media feed that relates to your persona. [You can't repost if there are no posts on the timeline. Only write down the message ID as content!]
@@ -160,3 +161,4 @@ Reply in JSON format.\n\n"""
         response = self.get_response(msg, response_format=Action)
 
         return response.message.parsed, msg
+
