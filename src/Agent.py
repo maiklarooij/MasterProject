@@ -61,6 +61,40 @@ class Agent():
 
         return sys_msg
     
+    def _add_bio(self):
+
+        prompt = f"""Write a very short (max. 140 characters), very informal social media biography for the following persona:
+        
+        {self.persona['persona']}
+
+        You may add things that are not in the persona. Do not use emoji. Write as if you are the person described."""
+
+        response = self.llm.chat.completions.create(
+            model=self.model,
+            messages=[
+                {"role": "system", "content": prompt},
+            ]
+        )
+
+        self.persona['biography'] = response.choices[0].message.content
+
+        # print(self.persona['biography'])
+    
+    def set_client(self, client: OpenAI):
+        """
+        Set the client for the agent to use for the simulation.
+        """
+
+        self.llm = client
+
+    def refresh_client(self, new_client: OpenAI):
+        """
+        Refresh the client for the agent to use for the simulation.
+        """
+
+        self.llm.close()
+        self.set_client(new_client)
+
     def json(self, include_persona: bool = False):
         """
         Return the agent's data in JSON format.
@@ -107,23 +141,35 @@ class Agent():
         
         return response.choices[0]
     
-    def link_with_user_on_bio(self, other_agent: 'Agent', post_content: str) -> str:
+    def link_with_user(self, other_agent: 'Agent', post_content: str, other_agent_posts: list, use_bio: bool = False,
+                       use_follower_count: bool = True) -> str:
         """
         Supply the bio of another agent and let the user decide if they want to follow them.
         """
 
-        msg = f"""
-            You reposted this post:
-            {post_content}
+        msg = f"""You reposted this post:
+{post_content}
 
-            You view the profile of the poster.
-            Based on your beliefs, interests and personality, would you like to follow this user?
-            User ID: {other_agent.identifier}
-            Followers: {other_agent.followers}
-            Bio: {other_agent.persona['biography']}
+You view the profile of the poster.
+User ID: {other_agent.identifier}
+"""
+        
+        if use_follower_count:
+            msg += f"Followers: {other_agent.followers}\n"
 
-            Reply with 'yes' or 'no'. Also provide a short explanation for your choice.
-        """
+        if use_bio:
+            msg += f"""Bio: {other_agent.persona['biography']}
+"""
+        
+        msg += """\nYou also see that the user has recently posted or reposted the following messages:\n\n"""
+        
+        for post in other_agent_posts[:5]:
+
+            msg += str(post['post_content'])
+            msg += "\n\n"
+        
+        msg += """Based on your beliefs, interests and personality, would you like to follow this user?
+Reply with 'yes' or 'no'. Also provide a short explanation for your choice."""
 
         response = self.get_response(msg, BooleanAction).message.parsed
 
@@ -158,7 +204,10 @@ Reply in JSON format.\n\n"""
             msg += f"""ID: {i}\nTitle: {news_item['headline']}\nCategory: {news_item['category']}\nDescription: {news_item['short_description']}\n\n"""
 
         # Get response and handle the action
-        response = self.get_response(msg, response_format=Action)
+
+        try:
+            response = self.get_response(msg, response_format=Action)
+        except Exception as e:
+            return Action(option=-1, content="", explanation=str(e)), msg
 
         return response.message.parsed, msg
-

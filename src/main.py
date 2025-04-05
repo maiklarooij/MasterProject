@@ -10,6 +10,8 @@ from Agent import Agent
 from Platform import Platform
 from NewsFeed import NewsFeed
 
+
+import cProfile
 dotenv.load_dotenv()
 
 def log_action(user, action):
@@ -55,50 +57,80 @@ def select_users(persona_path, n):
 
     return democrat_sample + republican_sample + non_partisan_sample
 
+def run_simulation():
 
-if __name__ == "__main__":
 
     # Define the path to the persona file
-    persona_path = os.path.join(os.getcwd(), 'personas_with_bio.json')
+    persona_path = os.path.join(os.getcwd(), 'personas_with_bio_new.json')
     news_feed = NewsFeed('../News/News_Category_Dataset_v3.json')
 
     # Set parameters for the simulation
-    simulation_size = 100
-    simulation_steps = 1500
-    run_id = 12
+    simulation_size = 500
+    simulation_steps = 10000
+    run_id = 28
 
     # Set strategies for the platform
     user_link_strategy = "on_repost_bio"
-    timeline_select_strategy = "random_weighted"
+    timeline_select_strategy = "bridging_attributes"
+    show_info = True
 
-    platform = Platform(user_link_strategy=user_link_strategy, timeline_select_strategy=timeline_select_strategy)
+    platform = Platform(user_link_strategy=user_link_strategy, timeline_select_strategy=timeline_select_strategy, show_info=show_info)
     
     # Ensure the right fraction of Democrats, Republicans, and non-partisans
     selected_users = select_users(persona_path, n=simulation_size)
 
-    # Register users
-    [platform.register_user(Agent(model, user)) for user in selected_users]
-
     # Set client for platform to OpenAI gpt-4o-mini
     model = "gpt-4o-mini"
     client = OpenAI()
+
+    # Register users
+    [platform.register_user(Agent(model, user)) for user in selected_users]
     platform.set_client(client)
 
-    for _ in range(simulation_steps):
+    # for user in platform.users:
+        
+    #     client = OpenAI()
+    #     user.set_client(client)
 
-        print(f"Simulation step {_ + 1}")
+    # Temp
+    # [agent._add_bio() for agent in platform.users]
 
-        # Select a random user
-        user = platform.sample_user()
+    try:
+        for i in range(simulation_steps):
 
-        # Perform an action
-        action, prompt = user.perform_action(news_feed.get_random_news(10), platform.get_timeline(user.identifier, 10))
-        platform.parse_and_do_action(user.identifier, action, prompt)
+            print(f"Simulation step {i + 1}")
 
-        print(log_action(user, action))
+            # Select a random user
+            user = platform.sample_user()
 
-        # Add snapshot of the platform for analysis
-        platform.add_snapshot()
+            # Perform an action
+            action, prompt = user.perform_action(news_feed.get_random_news(10), platform.get_timeline(user.identifier, 10))
+            platform.parse_and_do_action(user.identifier, action, prompt)
+
+            print(log_action(user, action))
+
+            # Add snapshot of the platform for analysis
+            platform.add_snapshot()
+
+            # Refresh client every 1000 steps
+            if i % 1000 == 0 and i != 0:
+                
+                new_client = OpenAI()
+                platform.set_client(new_client)
+                client.close()
+
+                client = new_client
+
+            # if i % 1500 == 0:
+            #     json.dump(platform.generate_log(), open(f'../results/log_{run_id}_{i}.json', 'w'), indent=4, default=str)
+    except:
+        json.dump(platform.generate_log(), open(f'../results/log_{run_id}.json', 'w'), indent=4, default=str)
+
+        # Set reuse of platform
+        platform.set_client(None)
+        client.close()
+
+        pickle.dump(platform, open(f'../results/platform_{run_id}.pkl', 'wb'))
 
     json.dump(platform.generate_log(), open(f'../results/log_{run_id}.json', 'w'), indent=4, default=str)
 
@@ -107,3 +139,68 @@ if __name__ == "__main__":
     client.close()
 
     pickle.dump(platform, open(f'../results/platform_{run_id}.pkl', 'wb'))
+
+def continue_simulation(filename):
+
+    platform: Platform = pickle.load(open(filename, 'rb'))
+    run_id = filename.split('_')[-1].replace('.pkl', '')
+
+    news_feed = NewsFeed('../News/News_Category_Dataset_v3.json')
+
+    client = OpenAI()
+    platform.set_client(client)
+
+    print(platform.network_snapshots)
+    current_step = len(platform.network_snapshots) + 1
+    
+    print(platform.raw_posts)
+
+    try:
+        for i in range(current_step, 10000):
+
+            print(f"Simulation step {i + 1}")
+
+            # Select a random user
+            user = platform.sample_user()
+
+            # Perform an action
+            action, prompt = user.perform_action(news_feed.get_random_news(10), platform.get_timeline(user.identifier, 10))
+            platform.parse_and_do_action(user.identifier, action, prompt)
+
+            print(log_action(user, action))
+
+            # Add snapshot of the platform for analysis
+            platform.add_snapshot()
+
+            # Refresh client every 1000 steps
+            if i % 1000 == 0 and i != 0:
+                
+                new_client = OpenAI()
+                platform.set_client(new_client)
+                client.close()
+
+                client = new_client
+
+    except:
+        json.dump(platform.generate_log(), open(f'../results/log_{run_id}_continued.json', 'w'), indent=4, default=str)
+
+        # Set reuse of platform
+        platform.set_client(None)
+        client.close()
+
+        pickle.dump(platform, open(f'../results/platform_{run_id}_continued.pkl', 'wb'))
+
+        return
+
+    json.dump(platform.generate_log(), open(f'../results/log_{run_id}_continued.json', 'w'), indent=4, default=str)
+
+    # Set reuse of platform
+    platform.set_client(None)
+    client.close()
+
+    pickle.dump(platform, open(f'../results/platform_{run_id}_continued.pkl', 'wb'))
+
+if __name__ == "__main__":
+
+    run_simulation()
+    # continue_simulation('../results/platform_28.pkl')

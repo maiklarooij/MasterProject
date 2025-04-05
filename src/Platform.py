@@ -2,11 +2,14 @@ from datetime import datetime
 
 from Agent import Agent, Action
 import random
+import requests
+import os 
 
 from openai import OpenAI
 
+
 class Post():
-    def __init__(self, post_id: int, author: Agent, timestamp: datetime, content: str):
+    def __init__(self, post_id: int, author: Agent, timestamp: datetime, content: str, show_info: bool = True, calculate_bridging: bool = False):
         self.post_id = post_id
         self.author = author
         self.timestamp = timestamp
@@ -15,12 +18,65 @@ class Post():
         self.reposts = 0
         self.reposters = []
 
+        self.show_info = show_info
+
+        if calculate_bridging:
+            self.bridging_score = self._calculate_bridging_score()
+
     def __str__(self):
-        return f"""Post ID: {self.post_id}\nPosted by: user with {self.author.followers} followers\nReposts: {self.reposts}\nContent: {self.content}"""
+
+        post_string = f"""Post ID: {self.post_id}"""
+
+        if self.show_info:
+            post_string += f"""
+Posted by: user with {self.author.followers} followers
+Reposts: {self.reposts}"""
+
+        post_string += f"""
+Content: {self.content}"""
+
+        return post_string
     
     def __repr__(self):
         return f"User {self.author} posted: {self.content}"
     
+    def _calculate_bridging_score(self, retries: int = 3) -> float:
+
+        if retries > 3:
+            print("Retries exceeded")
+            return 0.0
+
+        body_json = {'comment': {'text': self.content},
+                        'languages': ["en"],
+                        'requestedAttributes': {
+                            'AFFINITY_EXPERIMENTAL':{},
+                    'COMPASSION_EXPERIMENTAL': {},
+                    'CURIOSITY_EXPERIMENTAL': {},
+                    'NUANCE_EXPERIMENTAL': {},
+                    'PERSONAL_STORY_EXPERIMENTAL': {},
+                    'REASONING_EXPERIMENTAL': {},
+                    'RESPECT_EXPERIMENTAL': {}
+                    } }
+        
+
+        try:
+            r = requests.post(f'https://commentanalyzer.googleapis.com/v1alpha1/comments:analyze?key={os.environ.get("PERSPECTIVE_API_KEY")}', json=body_json)
+            perspective_response = r.json()
+
+            attributes = ['AFFINITY_EXPERIMENTAL', 'COMPASSION_EXPERIMENTAL', 'CURIOSITY_EXPERIMENTAL', 'NUANCE_EXPERIMENTAL',
+                        'PERSONAL_STORY_EXPERIMENTAL', 'REASONING_EXPERIMENTAL', 'RESPECT_EXPERIMENTAL']
+            
+            scores = []
+            for attribute in attributes:
+                
+                attribute_score = perspective_response['attributeScores'][attribute]['summaryScore']['value']
+                scores.append(attribute_score)
+        except:
+            print("Error in perspective API call")
+            return self._calculate_bridging_score(retries=retries+1)
+
+        return sum(scores) / len(scores)
+
     def json(self):
         """
         Return the post as a JSON object for logging purposes.
@@ -49,7 +105,8 @@ class Post():
 
 class Platform():
 
-    def __init__(self, user_link_strategy: str = "on_repost", timeline_select_strategy: str = "random"):
+    def __init__(self, user_link_strategy: str = "on_repost", timeline_select_strategy: str = "random",
+                 show_info: bool = True):
         
         # All users on the platform
         self.users: list[Agent] = []
@@ -73,16 +130,18 @@ class Platform():
         # User link strategy: when to link users
         # on_repost: link users when one user reposts another user's post
         # on_repost_bio: link users when user decides to follow based on reading bio after reposting
-        if user_link_strategy not in ['on_repost', 'on_repost_bio']:
+        if user_link_strategy not in ['on_repost', 'on_repost_bio', 'on_repost_posts']:
             raise Exception("Invalid user link strategy")
         self.user_link_strategy = user_link_strategy
 
         # Timeline selection strategy: how to select posts for the timeline
         # random: randomly select posts
         # random_weighted: randomly select posts with weights based on reposts and followers
-        if timeline_select_strategy not in ['random', 'random_weighted']:
+        if timeline_select_strategy not in ['random', 'random_weighted', 'random_weighted_reversed', 'bridging_attributes']:
             raise Exception("Invalid timeline selection strategy")
         self.timeline_select_strategy = timeline_select_strategy
+
+        self.show_info = show_info
 
     def set_client(self, client: OpenAI | None):
         """
@@ -103,7 +162,9 @@ class Platform():
         """
         Create a snapshot of the network after each simulation step for analysis.
         """
-        self.network_snapshots.append({'users': [user.json(include_persona=False) for user in self.users], 'connections': [link for link in self.user_links]})
+        self.network_snapshots.append({'users': [user.json(include_persona=False) for user in self.users], 
+                                       'connections': [link for link in self.user_links],
+                                       'posts_reposts': {post.post_id: post.reposts for post in self.raw_posts}})
     
     def generate_posts_json(self):
         """
@@ -164,6 +225,8 @@ class Platform():
         agent.identifier = len(self.users)+1
         self.users.append(agent)
 
+        agent.llm = OpenAI()
+
     def get_user(self, user_id: int) -> Agent:
         """
         Returns the user with the given user_id.
@@ -216,6 +279,42 @@ class Platform():
         user = self.get_user(user_id)
         return user.followers
     
+    def get_posts_of_user(self, user_id: int) -> list[Post]:
+        """
+        Return a list of all posts by the user.
+        """
+
+        return [post for post in self.posts if post["user_id"] == user_id]
+    
+    def pick_posts(self, posts, weights, size):
+        """
+        Pick posts based on weights.
+        """
+
+        picked_posts = []
+        posts_left = posts
+
+        for _ in range(size):
+
+            if len(posts_left) == 0:
+                break
+
+            post = random.choices(posts_left, weights=weights)[0]
+            picked_posts.append(post)
+            
+            for i in range(len(posts_left)-1, -1, -1):
+                if posts_left[i]['post_content'].post_id == post['post_content'].post_id:
+                    
+                    del weights[i]
+
+            # weights = [w for w in weights if posts_left[weights.index(w)]['post_content'].post_id != post['post_content'].post_id]
+            posts_left = [p for p in posts_left if p['post_content'].post_id != post['post_content'].post_id]
+
+            
+        return picked_posts
+
+
+    
     def get_timeline_recommended_part(self, user_id: int, size: int = 5) -> list[dict]:
         """
         Create a part of the timeline with recommended posts.
@@ -228,31 +327,103 @@ class Platform():
         linked_users = [link[1] for link in self.user_links if link[0] == user_id]
 
         # Get all posts of linked users
-        posts_following = [post for post in self.posts if post["user_id"] in linked_users and not post["post_content"].reposted_by(user_id)
+        posts_following = [post['post_content'].post_id for post in self.posts if post["user_id"] in linked_users and not post["post_content"].reposted_by(user_id)
                     and not post['post_content'].author.identifier == user_id]
 
+        # TODO: use raw_posts or posts????
         if self.timeline_select_strategy == 'random':
-            random_part = [post for post in self.posts if post['post_content'].post_id not in [post['post_content'].post_id for post in posts_following]
+            random_part = [post for post in self.posts if post['post_content'].post_id not in posts_following
                         and not post['post_content'].author.identifier == user_id and not post['post_content'].reposted_by(user_id)]
-            random_part = random.sample(random_part, min(size, len(random_part)))
+            
+            random_part = self.pick_posts(random_part, [1 for _ in random_part], min(size, len(random_part)))
+            # random_part = random.sample(random_part, min(size, len(random_part)))
             return random_part
         elif self.timeline_select_strategy == 'random_weighted':
-            random_part = [post for post in self.posts if post['post_content'].post_id not in [post['post_content'].post_id for post in posts_following]
+            random_part = [post for post in self.posts if post['post_content'].post_id not in posts_following
                         and not post['post_content'].author.identifier == user_id and not post['post_content'].reposted_by(user_id)]
+            
+            # Recent 50 posts
+            # random_part.sort(key=lambda x: x["time"], reverse=True)
+            random_part = random_part[-50:]
             
             if len(random_part) == 0:
                 return []
             
-            # Posts with more reposts and by users with more followers are more likely to be recommended
-            total_score = sum([post['post_content'].reposts + post['post_content'].author.followers for post in random_part])
-            if total_score == 0:
-                weights = [1/len(random_part) for post in random_part]
-            else:
-                weights = [(post['post_content'].reposts + post['post_content'].author.followers) / total_score for post in random_part]
+            # Only keep distinct posts based on post['post_content'].post_id
+            seen = set()
+            result = []
+            for post in random_part:
+                if post['post_content'].post_id not in seen:
+                    seen.add(post['post_content'].post_id)
+                    result.append(post)
+            random_part = result
             
-            random_part = random.choices(random_part, weights=weights, k=min(size, len(random_part)))
+            # Posts with more reposts are more likely to be recommended
+            total_score = sum([post['post_content'].reposts + 1 for post in random_part])
+            if total_score == 0:
+                weights = [1 for _ in random_part]
+            else:
+                weights = [post['post_content'].reposts + 1 for post in random_part]
+            
+            random_part = self.pick_posts(random_part, weights, min(size, len(random_part)))
+            print("Reposts: ", [post['post_content'].reposts for post in random_part])
+            # random_part = random.choices(random_part, weights=weights, k=min(size, len(random_part)))
 
             return random_part
+        elif self.timeline_select_strategy == 'random_weighted_reversed':
+            random_part = [post for post in self.posts if post['post_content'].post_id not in posts_following
+                        and not post['post_content'].author.identifier == user_id and not post['post_content'].reposted_by(user_id)]
+            
+            # Recent 50 posts
+            # random_part.sort(key=lambda x: x["time"], reverse=True)
+            random_part = random_part[-50:]
+            
+            if len(random_part) == 0:
+                return []
+            
+            # Only keep distinct posts based on post['post_content'].post_id
+            seen = set()
+            result = []
+            for post in random_part:
+                if post['post_content'].post_id not in seen:
+                    seen.add(post['post_content'].post_id)
+                    result.append(post)
+            random_part = result
+            
+            # Posts with less reposts are more likely to be recommended
+            total_score = sum([post['post_content'].reposts for post in random_part])
+            if total_score == 0:
+                weights = [1 for _ in random_part]
+            else:
+                weights = [(total_score + 1) - post['post_content'].reposts for post in random_part]
+            
+            random_part = self.pick_posts(random_part, weights, min(size, len(random_part)))
+            # random_part = random.choices(random_part, weights=weights, k=min(size, len(random_part)))
+            print("Reposts: ", [post['post_content'].reposts for post in random_part])
+            return random_part
+        elif self.timeline_select_strategy == 'bridging_attributes':
+            random_part = [post for post in self.posts if post['post_content'].post_id not in posts_following
+                        and not post['post_content'].author.identifier == user_id and not post['post_content'].reposted_by(user_id)]
+            
+            # Recent 50 posts
+            # random_part.sort(key=lambda x: x["time"], reverse=True)
+            random_part = random_part[-50:]
+            
+            if len(random_part) == 0:
+                return []
+            
+            # Only keep distinct posts based on post['post_content'].post_id
+            seen = set()
+            result = []
+            for post in random_part:
+                if post['post_content'].post_id not in seen:
+                    seen.add(post['post_content'].post_id)
+                    result.append(post)
+            random_part = result
+
+            random_part.sort(key=lambda post: post['post_content'].bridging_score, reverse=True)
+            return random_part[:5]
+
 
     def get_timeline(self, user_id: int, size: int) -> list[dict]:
         """
@@ -270,10 +441,10 @@ class Platform():
                     and not post['post_content'].author.identifier == user_id]
 
         # Sort timelime by time
-        following_part.sort(key=lambda x: x["time"], reverse=True)
+        # following_part.sort(key=lambda x: x["time"], reverse=True)
 
         # Combine 5 posts of linked users with 5 recommended posts
-        timeline = following_part[:5] + self.get_timeline_recommended_part(user_id, size=5)
+        timeline = following_part[-5:] + self.get_timeline_recommended_part(user_id, size=5)
         timeline.sort(key=lambda x: x["time"], reverse=True)
 
         return timeline
@@ -284,7 +455,7 @@ class Platform():
         """
 
         timestamp = datetime.now()
-        post = Post(len(self.posts)+1, user, timestamp, content)
+        post = Post(len(self.posts)+1, user, timestamp, content, show_info=self.show_info, calculate_bridging=self.timeline_select_strategy=='bridging_attributes')
 
         self.raw_posts.append(post)
 
@@ -314,7 +485,21 @@ class Platform():
         if self.user_link_strategy == "on_repost":
             self.link_users(user, post.author)
         elif self.user_link_strategy == "on_repost_bio":
-            should_link, explanation = user.link_with_user_on_bio(post.author, post.content)
+            print("Getting user's last posts")
+            user_last_posts = self.get_posts_of_user(post.author.identifier)
+            print("Asking user to link based on bio")
+            should_link, explanation = user.link_with_user(post.author, post.content, user_last_posts, use_bio=True, use_follower_count=self.show_info)
+            if should_link:
+                self.link_users(user, post.author)
+                print(f"User {user.identifier} linked to user {post.author.identifier}")
+                print(f"Explanation: {explanation}")
+            else:
+                print(f"User {user.identifier} chose not to link to user {post.author.identifier}")
+                print(f"Explanation: {explanation}")
+        elif self.user_link_strategy == "on_repost_posts":
+
+            user_last_posts = self.get_posts_of_user(post.author.identifier)
+            should_link, explanation = user.link_with_user(post.author, post.content, user_last_posts, use_bio=False)
             if should_link:
                 self.link_users(user, post.author)
                 print(f"User {user.identifier} linked to user {post.author.identifier}")
@@ -339,7 +524,7 @@ class Platform():
             "action": action.option,
             "content": action.content,
             'success': success,
-            'explanation': action.explanation,
+            # 'explanation': action.explanation,
             "prompt": prompt
         })
 

@@ -808,9 +808,11 @@ Please answer in the format I gave you. I will give you the persona now.
 
 def add_biography(persona, client):
 
-    prompt = f"""I am going to give you a persona of a person. Write a short introduction of 1-2 sentences as if you are the person.
+    prompt = f"""Write a very short (max. 140 characters), very informal social media biography for the following persona: 
 
-{persona['persona']}"""
+{persona['persona']}
+
+You may add things that are not in the persona. Do not use emoji. Write as if you are the person described."""
     
     response = client.chat.completions.create(
         model="gpt-4o-mini",
@@ -834,11 +836,13 @@ if __name__ == "__main__":
 
     client = openai.OpenAI()
 
-    personas = json.load(open("personas.json"))
-
+    personas = json.load(open("personas_with_bio.json"))
+    i=1
     for persona in personas:
+        print(i)
+        i+=1
         add_biography(persona, client)
         print(persona['biography'])
         print()
 
-    json.dump(personas, open("personas_with_bio.json","w"))
+    json.dump(personas, open("personas_with_bio_new.json","w"))
