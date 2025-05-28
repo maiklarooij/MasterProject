@@ -53,7 +53,7 @@ class Agent():
 
         sys_msg = f"""You are a user of the X social media platform. 
                     This is a platform where users share opinions and thoughts on topics of interest in the form of posts.
-                    You main goal is to repost others' posts and you are also able to share your own posts.
+                    Your main goal is to repost others' posts and you are also able to share your own posts.
 
                     Here is a description of your persona:
                     {self.persona['persona']}
@@ -208,6 +208,7 @@ Reply in JSON format.\n\n"""
         try:
             response = self.get_response(msg, response_format=Action)
         except Exception as e:
+            print(f"Error: {e}")
             return Action(option=-1, content="", explanation=str(e)), msg
 
         return response.message.parsed, msg

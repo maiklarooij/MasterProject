@@ -4,6 +4,7 @@ from Agent import Agent, Action
 import random
 import requests
 import os 
+import numpy as np
 
 from openai import OpenAI
 
@@ -137,7 +138,7 @@ class Platform():
         # Timeline selection strategy: how to select posts for the timeline
         # random: randomly select posts
         # random_weighted: randomly select posts with weights based on reposts and followers
-        if timeline_select_strategy not in ['random', 'random_weighted', 'random_weighted_reversed', 'bridging_attributes']:
+        if timeline_select_strategy not in ['random', 'random_weighted', 'random_weighted_reversed', 'bridging_attributes', 'chronological', 'other_partisan']:
             raise Exception("Invalid timeline selection strategy")
         self.timeline_select_strategy = timeline_select_strategy
 
@@ -423,6 +424,60 @@ class Platform():
 
             random_part.sort(key=lambda post: post['post_content'].bridging_score, reverse=True)
             return random_part[:5]
+        elif self.timeline_select_strategy == 'chronological':
+            random_part = [post for post in self.posts if post['post_content'].post_id not in posts_following
+                        and not post['post_content'].author.identifier == user_id and not post['post_content'].reposted_by(user_id)]
+            
+            if len(random_part) == 0:
+                return []
+            
+            # Only keep distinct posts based on post['post_content'].post_id
+            seen = set()
+            result = []
+            for post in random_part:
+                if post['post_content'].post_id not in seen:
+                    seen.add(post['post_content'].post_id)
+                    result.append(post)
+            random_part = result
+            
+            random_part.sort(key=lambda x: x["time"], reverse=True)
+
+            return random_part[:5]
+        elif self.timeline_select_strategy == 'other_partisan':
+            random_part = [post for post in self.posts if post['post_content'].post_id not in posts_following
+                        and not post['post_content'].author.identifier == user_id and not post['post_content'].reposted_by(user_id)]
+            
+            # random_part = [post for post in random_part if post['post_content'].author.persona['party'] != self.get_user(user_id).persona['party']]
+
+            # Recent 50 posts
+            # random_part.sort(key=lambda x: x["time"], reverse=True)
+            random_part = random_part[-50:]
+            
+            if len(random_part) == 0:
+                return []
+            
+            # Only keep distinct posts based on post['post_content'].post_id
+            seen = set()
+            result = []
+            for post in random_part:
+                if post['post_content'].post_id not in seen:
+                    seen.add(post['post_content'].post_id)
+                    result.append(post)
+            random_part = result
+
+            k = 3
+
+            # Posts with more reposts are more likely to be recommended
+            # Boos for posts with more partisan difference
+            total_score = sum([post['post_content'].reposts + 1 for post in random_part])
+            if total_score == 0:
+                weights = [1 for _ in random_part]
+            else:
+                weights = [(post['post_content'].reposts + 1) * np.log(1+k+ abs(post['post_content'].author.persona['partisan'] - self.get_user(user_id).persona['partisan'])) for post in random_part]
+            
+            random_part = self.pick_posts(random_part, weights, min(size, len(random_part)))
+
+            return random_part
 
 
     def get_timeline(self, user_id: int, size: int) -> list[dict]:

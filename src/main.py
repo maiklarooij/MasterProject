@@ -57,22 +57,17 @@ def select_users(persona_path, n):
 
     return democrat_sample + republican_sample + non_partisan_sample
 
-def run_simulation():
+def run_simulation(simulation_size = 500, simulation_steps = 10000, 
+                   user_link_strategy = "on_repost_bio", 
+                   timeline_select_strategy = "random_weighted",
+                   show_info = True, run_nr = 1):
 
 
     # Define the path to the persona file
     persona_path = os.path.join(os.getcwd(), 'personas_with_bio_new.json')
     news_feed = NewsFeed('../News/News_Category_Dataset_v3.json')
 
-    # Set parameters for the simulation
-    simulation_size = 500
-    simulation_steps = 10000
-    run_id = 28
-
-    # Set strategies for the platform
-    user_link_strategy = "on_repost_bio"
-    timeline_select_strategy = "bridging_attributes"
-    show_info = True
+    filename = f"../results/{user_link_strategy}_{timeline_select_strategy}_{'info' if show_info else 'noinfo'}_{run_nr}"
 
     platform = Platform(user_link_strategy=user_link_strategy, timeline_select_strategy=timeline_select_strategy, show_info=show_info)
     
@@ -86,14 +81,6 @@ def run_simulation():
     # Register users
     [platform.register_user(Agent(model, user)) for user in selected_users]
     platform.set_client(client)
-
-    # for user in platform.users:
-        
-    #     client = OpenAI()
-    #     user.set_client(client)
-
-    # Temp
-    # [agent._add_bio() for agent in platform.users]
 
     try:
         for i in range(simulation_steps):
@@ -120,25 +107,22 @@ def run_simulation():
                 client.close()
 
                 client = new_client
-
-            # if i % 1500 == 0:
-            #     json.dump(platform.generate_log(), open(f'../results/log_{run_id}_{i}.json', 'w'), indent=4, default=str)
     except:
-        json.dump(platform.generate_log(), open(f'../results/log_{run_id}.json', 'w'), indent=4, default=str)
+        json.dump(platform.generate_log(), open(filename + '.json', 'w'), indent=4, default=str)
 
         # Set reuse of platform
         platform.set_client(None)
         client.close()
 
-        pickle.dump(platform, open(f'../results/platform_{run_id}.pkl', 'wb'))
+        pickle.dump(platform, open(filename + '.pkl', 'wb'))
 
-    json.dump(platform.generate_log(), open(f'../results/log_{run_id}.json', 'w'), indent=4, default=str)
+    json.dump(platform.generate_log(), open(filename + '.json', 'w'), indent=4, default=str)
 
     # Set reuse of platform
     platform.set_client(None)
     client.close()
 
-    pickle.dump(platform, open(f'../results/platform_{run_id}.pkl', 'wb'))
+    pickle.dump(platform, open(filename + '.pkl', 'wb'))
 
 def continue_simulation(filename):
 
@@ -202,5 +186,11 @@ def continue_simulation(filename):
 
 if __name__ == "__main__":
 
-    run_simulation()
-    # continue_simulation('../results/platform_28.pkl')
+    for i in range(2, 6):
+
+        print(f"Running simulation {i}...")
+
+        run_simulation(simulation_size=500, simulation_steps=10000, 
+                       user_link_strategy="on_repost_bio", 
+                       timeline_select_strategy="other_partisan",
+                       show_info=True, run_nr=i)

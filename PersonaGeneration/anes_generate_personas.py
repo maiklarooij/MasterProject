@@ -774,7 +774,7 @@ def extend_with_ai(persona, client):
 
     prompt = f"""I am going to give you a persona of a person. I need you to fill in some other pieces, and generate the options THREE times:
 
-- Your occuption
+- Your occupation
 - A list of your hobbies / interests
 
 Put them in lists
