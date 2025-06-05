@@ -1,7 +1,6 @@
 import json
 import numpy as np
 import requests
-# from transformers import pipeline
 from collections import Counter
 
 to_analyze = "on_repost_bio_other_partisan_info"
@@ -41,117 +40,6 @@ def EI_index(data):
     EI_index = (EL - IL) / (EL + IL)
 
     return EI_index
-
-def sentiment_analysis(data):
-
-    sentiment_analyzer = pipeline("sentiment-analysis")
-
-    for post in data['raw_posts']:
-
-        try:
-            sentiment = sentiment_analyzer(post['content'])[0]
-            post['sentiment'] = sentiment['label']
-            post['sentiment_score'] = sentiment['score']
-
-        except Exception as e:
-            print(f"Error processing post {post['identifier']}: {e}")
-            post['sentiment'] = None
-            post['sentiment_score'] = None
-
-    reposts = [post['reposts'] for post in data['raw_posts']]
-    sentiment_scores = [1 if post['sentiment'] == 'POSITIVE' else -1 for post in data['raw_posts']]
-    sentiments = [post['sentiment'] for post in data['raw_posts']]
-
-    # Calculate the correlation between sentiment and reposts
-    correlation_sentiment = np.corrcoef(sentiment_scores, reposts)[0, 1]
-
-    mean_reposts_by_sentiment = {}
-    for sentiment in set(sentiments):
-        mean_reposts_by_sentiment[sentiment] = sum(
-            post['reposts'] for post in data['raw_posts'] if post['sentiment'] == sentiment and post['reposts'] > 0
-        ) / len([post for post in data['raw_posts'] if post['sentiment'] == sentiment and post['reposts'] > 0])
-
-    median_reposts_by_sentiment = {}
-    for sentiment in set(sentiments):
-        median_reposts_by_sentiment[sentiment] = sorted(
-            post['reposts'] for post in data['raw_posts'] if post['sentiment'] == sentiment and post['reposts'] > 0
-        )[len([post for post in data['raw_posts'] if post['sentiment'] == sentiment and post['reposts'] > 0]) // 2]
-
-    mean_reposts_by_sentiment_all = {}
-    for sentiment in set(sentiments):
-        mean_reposts_by_sentiment_all[sentiment] = sum(
-            post['reposts'] for post in data['raw_posts'] if post['sentiment'] == sentiment
-        ) / len([post for post in data['raw_posts'] if post['sentiment'] == sentiment])
-
-    median_reposts_by_sentiment_all = {}
-    for sentiment in set(sentiments):
-        median_reposts_by_sentiment_all[sentiment] = sorted(
-            post['reposts'] for post in data['raw_posts'] if post['sentiment'] == sentiment 
-        )[len([post for post in data['raw_posts'] if post['sentiment'] == sentiment]) // 2]
-
-    return {
-        "correlation_sentiment": correlation_sentiment,
-        "mean_reposts_by_sentiment": mean_reposts_by_sentiment,
-        "median_reposts_by_sentiment": median_reposts_by_sentiment,
-        "mean_reposts_by_sentiment_all": mean_reposts_by_sentiment_all,
-        "median_reposts_by_sentiment_all": median_reposts_by_sentiment_all
-    }
-
-
-
-def correlations_post_content(data):
-
-    for post in data['raw_posts']:
-
-        try:
-            body_json = {"comment": {"text": post['content']},
-                                "languages": ["en"],
-                                "requestedAttributes": {
-                                    "AFFINITY_EXPERIMENTAL":{},
-                            "COMPASSION_EXPERIMENTAL": {},
-                            "CURIOSITY_EXPERIMENTAL": {},
-                            "NUANCE_EXPERIMENTAL": {},
-                            "PERSONAL_STORY_EXPERIMENTAL": {},
-                            "REASONING_EXPERIMENTAL": {},
-                            "RESPECT_EXPERIMENTAL": {},
-                            "TOXICITY": {}
-                            } }
-
-            r = requests.post(f'https://commentanalyzer.googleapis.com/v1alpha1/comments:analyze?key=AIzaSyAxTjb4F0tKxk-X6_s3Nd5E1VHKbok8KuU', json=body_json)
-            perspective_response = r.json()
-
-            attributes = ['AFFINITY_EXPERIMENTAL', 'COMPASSION_EXPERIMENTAL', 'CURIOSITY_EXPERIMENTAL', 'NUANCE_EXPERIMENTAL',
-                        'PERSONAL_STORY_EXPERIMENTAL', 'REASONING_EXPERIMENTAL', 'RESPECT_EXPERIMENTAL']
-            
-            scores = []
-            for attribute in attributes:
-                
-                attribute_score = perspective_response['attributeScores'][attribute]['summaryScore']['value']
-                scores.append(attribute_score)
-
-            post['bridging_score'] = sum(scores) / len(scores)
-            post['toxicity'] = perspective_response['attributeScores']['TOXICITY']['summaryScore']['value']
-
-        except Exception as e:
-            print(f"Error processing post {post['identifier']}: {e}")
-            post['bridging_score'] = None
-            post['toxicity'] = None
-
-            continue
-
-    reposts = [post['reposts'] for post in data['raw_posts']]
-    bridging_scores = [post['bridging_score'] for post in data['raw_posts']]
-    toxicity_scores = [post['toxicity'] for post in data['raw_posts']]
-
-    # Calculate the correlation between bridging scores and reposts
-    correlation_bridging = np.corrcoef(bridging_scores, reposts)[0, 1]
-    # Calculate the correlation between toxicity scores and reposts
-    correlation_toxicity = np.corrcoef(toxicity_scores, reposts)[0, 1]
-
-    return {
-        "correlation_bridging": correlation_bridging,
-        "correlation_toxicity": correlation_toxicity
-    }
 
 def correlations(data):
 
@@ -244,8 +132,6 @@ for file_to_analyze in all_files:
             "gini_coefficient_reposts": gini_coefficient(repost_distribution),
             "EI_index": EI_index(data),
             "correlations": correlations(data),
-            # "correlations_post_content": correlations_post_content(data),
-            # "sentiment_analysis": sentiment_analysis(data),
             "actions": Counter([action['action'] for action in data['actions']]),
             "inequality": inequality(data),
         }

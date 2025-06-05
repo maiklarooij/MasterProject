@@ -303,12 +303,12 @@ class Platform():
             post = random.choices(posts_left, weights=weights)[0]
             picked_posts.append(post)
             
+            # Remove posts if already picked
             for i in range(len(posts_left)-1, -1, -1):
                 if posts_left[i]['post_content'].post_id == post['post_content'].post_id:
                     
                     del weights[i]
 
-            # weights = [w for w in weights if posts_left[weights.index(w)]['post_content'].post_id != post['post_content'].post_id]
             posts_left = [p for p in posts_left if p['post_content'].post_id != post['post_content'].post_id]
 
             
@@ -330,21 +330,20 @@ class Platform():
         # Get all posts of linked users
         posts_following = [post['post_content'].post_id for post in self.posts if post["user_id"] in linked_users and not post["post_content"].reposted_by(user_id)
                     and not post['post_content'].author.identifier == user_id]
+        
+        random_part = [post for post in self.posts if post['post_content'].post_id not in posts_following
+                        and not post['post_content'].author.identifier == user_id and not post['post_content'].reposted_by(user_id)]
 
         # TODO: use raw_posts or posts????
         if self.timeline_select_strategy == 'random':
-            random_part = [post for post in self.posts if post['post_content'].post_id not in posts_following
-                        and not post['post_content'].author.identifier == user_id and not post['post_content'].reposted_by(user_id)]
+            
             
             random_part = self.pick_posts(random_part, [1 for _ in random_part], min(size, len(random_part)))
             # random_part = random.sample(random_part, min(size, len(random_part)))
             return random_part
         elif self.timeline_select_strategy == 'random_weighted':
-            random_part = [post for post in self.posts if post['post_content'].post_id not in posts_following
-                        and not post['post_content'].author.identifier == user_id and not post['post_content'].reposted_by(user_id)]
             
             # Recent 50 posts
-            # random_part.sort(key=lambda x: x["time"], reverse=True)
             random_part = random_part[-50:]
             
             if len(random_part) == 0:
@@ -372,11 +371,8 @@ class Platform():
 
             return random_part
         elif self.timeline_select_strategy == 'random_weighted_reversed':
-            random_part = [post for post in self.posts if post['post_content'].post_id not in posts_following
-                        and not post['post_content'].author.identifier == user_id and not post['post_content'].reposted_by(user_id)]
             
             # Recent 50 posts
-            # random_part.sort(key=lambda x: x["time"], reverse=True)
             random_part = random_part[-50:]
             
             if len(random_part) == 0:
@@ -399,12 +395,9 @@ class Platform():
                 weights = [(total_score + 1) - post['post_content'].reposts for post in random_part]
             
             random_part = self.pick_posts(random_part, weights, min(size, len(random_part)))
-            # random_part = random.choices(random_part, weights=weights, k=min(size, len(random_part)))
-            print("Reposts: ", [post['post_content'].reposts for post in random_part])
             return random_part
+        
         elif self.timeline_select_strategy == 'bridging_attributes':
-            random_part = [post for post in self.posts if post['post_content'].post_id not in posts_following
-                        and not post['post_content'].author.identifier == user_id and not post['post_content'].reposted_by(user_id)]
             
             # Recent 50 posts
             # random_part.sort(key=lambda x: x["time"], reverse=True)
@@ -425,8 +418,6 @@ class Platform():
             random_part.sort(key=lambda post: post['post_content'].bridging_score, reverse=True)
             return random_part[:5]
         elif self.timeline_select_strategy == 'chronological':
-            random_part = [post for post in self.posts if post['post_content'].post_id not in posts_following
-                        and not post['post_content'].author.identifier == user_id and not post['post_content'].reposted_by(user_id)]
             
             if len(random_part) == 0:
                 return []
@@ -443,14 +434,10 @@ class Platform():
             random_part.sort(key=lambda x: x["time"], reverse=True)
 
             return random_part[:5]
+        
         elif self.timeline_select_strategy == 'other_partisan':
-            random_part = [post for post in self.posts if post['post_content'].post_id not in posts_following
-                        and not post['post_content'].author.identifier == user_id and not post['post_content'].reposted_by(user_id)]
             
-            # random_part = [post for post in random_part if post['post_content'].author.persona['party'] != self.get_user(user_id).persona['party']]
-
             # Recent 50 posts
-            # random_part.sort(key=lambda x: x["time"], reverse=True)
             random_part = random_part[-50:]
             
             if len(random_part) == 0:

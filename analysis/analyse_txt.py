@@ -1,4 +1,5 @@
-f = open('../results/other_partisan_3.txt', 'r')
+# Example
+f = open('../results/other_partisan.txt', 'r')
 
 data = f.readlines()
 

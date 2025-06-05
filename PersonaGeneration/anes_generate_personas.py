@@ -179,34 +179,6 @@ def get_anes_rows(number_rows):
 
     df1 = df1.replace({'sexOrientation': dic})
 
-
-#     dic = {1: 'Family income below 30k',
-#            2: 'Family income below 30k',
-#            3: 'Family income below 30k',
-#            4: 'Family income below 30k',
-#            5: 'Family income below 30k',
-#            6: 'Family income 30-60k',
-#            7: 'Family income 30-60k',
-#            8: 'Family income 30-60k',
-#            9: 'Family income 30-60k',
-#            10: 'Family income 30-60k',
-#            11: 'Family income 60-90k',
-#            12: 'Family income 60-90k',
-#            13: 'Family income 60-90k',
-#            14: 'Family income 60-90k',
-#            15: 'Family income 60-90k',
-#            16: 'Family income more 90-175k',
-#            17: 'Family income more 90-175k',
-#            18: 'Family income more 90-175k',
-#            19: 'Family income more 90-175k',
-#            20: 'Family income more 90-175k',
-#            21: 'Family income more 175k',
-#            22: 'Family income more 175k',
-#            -9: None,
-#            -5: None} 
-    
-#     df1 = df1.replace({'income': dic})
-
     dic = {-9: None,
            -5: None,
           1:'I never or rarely stop myself from saying something because I think someone might call me a racist, a sexist, or otherwise a bad person',
@@ -531,41 +503,7 @@ def get_anes_rows(number_rows):
         # V201632c PRE: MENTION: TV PROG - AMOR ETERNO
         # V201633e PRE: MENTION: RADIO PROG - THE DAVE RAMSEY SHOW
 
-
         l['partisan'] = d['partisan']
-        
-        # 4 or 5
-        feelings = [k for k in ['afraid','outraged','angry','happy','worried','proud','irritated','nervous'] if d[k]==3 or d[k]==4 or d[k]==5]
-        
-        # ['V201151']
-        
-        
-        
-#     dic = {1: 'Family income below 30k',
-#            2: 'Family income below 30k',
-#            3: 'Family income below 30k',
-#            4: 'Family income below 30k',
-#            5: 'Family income below 30k',
-#            6: 'Family income 30-60k',
-#            7: 'Family income 30-60k',
-#            8: 'Family income 30-60k',
-#            9: 'Family income 30-60k',
-#            10: 'Family income 30-60k',
-#            11: 'Family income 60-90k',
-#            12: 'Family income 60-90k',
-#            13: 'Family income 60-90k',
-#            14: 'Family income 60-90k',
-#            15: 'Family income 60-90k',
-#            16: 'Family income more 90-175k',
-#            17: 'Family income more 90-175k',
-#            18: 'Family income more 90-175k',
-#            19: 'Family income more 90-175k',
-#            20: 'Family income more 90-175k',
-#            21: 'Family income more 175k',
-#            22: 'Family income more 175k',
-#            -9: None,
-#            -5: None} 
-        
         
         temps = {
             'feelingDemocratic':'Democrats',
@@ -627,10 +565,6 @@ def get_anes_rows(number_rows):
                 incomeclass = 'high income'
             l['persona'] += f"You are {incomeclass}.\n"
 
-        # if d['occupation'] is not None:
-        #     l['persona'] += f"Your occupation: {d['occupation']}.\n"
-        
-            
         if d['V201507x'] is not None:
             l['persona'] += f"Age: {d['V201507x']}.\n" 
         
@@ -648,8 +582,6 @@ def get_anes_rows(number_rows):
             l['persona'] += f"You are from {d['state']}.\n"
         if d['education'] is not None: 
             l['persona'] += f"Education: {d['education']}.\n"
-        # if d['employed'] is not None: 
-            # l['persona'] += f"You are {d['employed']}.\n"
         if d['race'] is not None: 
             l['persona'] += f"You are {d['race']}.\n"
         if d['sexOrientation'] is not None: 
@@ -664,18 +596,12 @@ def get_anes_rows(number_rows):
         else:
             l['never_talk_politics'] = False
         
-        # l['party'] = 'Non-partisan'
-        # l['partisan'] = 0
-        
         #Fishing
         if d['V202567'] == 1:
             l['persona'] += "You like to go fishing or hunting.\n" #
 
         l['fishing'] = d['V202567']
 
-    #They do talk about politics 
-    # else:
-        
         if d['vote2020'] in ['Donald Trump','Joe Biden']:
             l['persona'] += f"You voted for {d['vote2020']} in 2020.\n"
             l['voted2020'] = True
@@ -684,18 +610,6 @@ def get_anes_rows(number_rows):
             l['persona'] += "You didn't vote in 2020.\n"
             l['voted2020'] = False
             
-            
-        # OLD WAY OF ASSIGNING PARTY
-        # l['party'] = 'Democrat' if d['V201231x'] in [1,2,3] else 'Republican' if d['V201231x'] in [5,6,7] else 'Independent' if d['V201231x'] == 4 else 'None'
-        
-        
-        # if d['strongIdentif'] is not None: 
-        #     l['persona'] += f"You are a {d['strongIdentif']}.\n"
-    
-        #This worked poorly
-        # l['persona'] += f"On a scale from -100 to 100, where -100 is extremely Democratic and 100 is extremely Republican, you are: {d['partisan']}.\n"
-    
-        
         #Generate party affiliation
         if l['partisan'] == 0:
             l['persona'] += 'You prefer neither political party.\n'
@@ -748,16 +662,9 @@ def get_anes_rows(number_rows):
         if d['gunsOwned'] > 0:
             l['persona'] += "You own guns.\n"
 
-        # if len(feelings)>0:
-        #     l['persona'] += f"You feel {format_list(feelings)} about your country.\n"
-
 
         if len(hobbies_liked)>0:
             l['persona'] += f'You like to watch {format_list(hobbies_liked)} on TV.\n'
-
-        # l['attribs'] = {key: d[key] for key in ['gender','state','education','feelingDemocratic','feelingRepublican','V202023','race','strongIdentif']}
-        # l['attribs']['hobbies_liked'] = hobbies_liked
-        # l['attribs']['media'] = l['media']
         
         res.append(l)
 
@@ -804,8 +711,6 @@ Please answer in the format I gave you. I will give you the persona now.
     persona['persona'] += f"Your occupation is {chosen_occupation}.\n"
     persona['persona'] += f"You like {format_list(chosen_hobbies_interests)}.\n"
 
-    # persona['persona'] += text_response
-
 def add_biography(persona, client):
 
     prompt = f"""Write a very short (max. 140 characters), very informal social media biography for the following persona: 
@@ -826,23 +731,24 @@ You may add things that are not in the persona. Do not use emoji. Write as if yo
 if __name__ == "__main__":
     
     #Example usage
-    # print(return_persona_string())
+    print(return_persona_string())
 
-    # personas = get_anes_rows(2000)
+    personas = get_anes_rows(2000)
     
-    # json.dump(personas, open("personas.json","w"))
+    json.dump(personas, open("personas.json","w"))
 
     dotenv.load_dotenv('../src/.env')
 
     client = openai.OpenAI()
 
-    personas = json.load(open("personas_with_bio.json"))
+    personas = json.load(open("personas.json"))
     i=1
     for persona in personas:
         print(i)
         i+=1
+        extend_with_ai(persona, client)
         add_biography(persona, client)
         print(persona['biography'])
         print()
 
-    json.dump(personas, open("personas_with_bio_new.json","w"))
+    json.dump(personas, open("personas_with_bio.json","w"))

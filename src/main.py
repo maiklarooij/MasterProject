@@ -10,8 +10,6 @@ from Agent import Agent
 from Platform import Platform
 from NewsFeed import NewsFeed
 
-
-import cProfile
 dotenv.load_dotenv()
 
 def log_action(user, action):
@@ -64,8 +62,8 @@ def run_simulation(simulation_size = 500, simulation_steps = 10000,
 
 
     # Define the path to the persona file
-    persona_path = os.path.join(os.getcwd(), 'personas_with_bio_new.json')
-    news_feed = NewsFeed('../News/News_Category_Dataset_v3.json')
+    persona_path = os.path.join(os.getcwd(), 'personas.json')
+    news_feed = NewsFeed('News_Category_Dataset_v3.json')
 
     filename = f"../results/{user_link_strategy}_{timeline_select_strategy}_{'info' if show_info else 'noinfo'}_{run_nr}"
 
@@ -124,69 +122,10 @@ def run_simulation(simulation_size = 500, simulation_steps = 10000,
 
     pickle.dump(platform, open(filename + '.pkl', 'wb'))
 
-def continue_simulation(filename):
-
-    platform: Platform = pickle.load(open(filename, 'rb'))
-    run_id = filename.split('_')[-1].replace('.pkl', '')
-
-    news_feed = NewsFeed('../News/News_Category_Dataset_v3.json')
-
-    client = OpenAI()
-    platform.set_client(client)
-
-    print(platform.network_snapshots)
-    current_step = len(platform.network_snapshots) + 1
-    
-    print(platform.raw_posts)
-
-    try:
-        for i in range(current_step, 10000):
-
-            print(f"Simulation step {i + 1}")
-
-            # Select a random user
-            user = platform.sample_user()
-
-            # Perform an action
-            action, prompt = user.perform_action(news_feed.get_random_news(10), platform.get_timeline(user.identifier, 10))
-            platform.parse_and_do_action(user.identifier, action, prompt)
-
-            print(log_action(user, action))
-
-            # Add snapshot of the platform for analysis
-            platform.add_snapshot()
-
-            # Refresh client every 1000 steps
-            if i % 1000 == 0 and i != 0:
-                
-                new_client = OpenAI()
-                platform.set_client(new_client)
-                client.close()
-
-                client = new_client
-
-    except:
-        json.dump(platform.generate_log(), open(f'../results/log_{run_id}_continued.json', 'w'), indent=4, default=str)
-
-        # Set reuse of platform
-        platform.set_client(None)
-        client.close()
-
-        pickle.dump(platform, open(f'../results/platform_{run_id}_continued.pkl', 'wb'))
-
-        return
-
-    json.dump(platform.generate_log(), open(f'../results/log_{run_id}_continued.json', 'w'), indent=4, default=str)
-
-    # Set reuse of platform
-    platform.set_client(None)
-    client.close()
-
-    pickle.dump(platform, open(f'../results/platform_{run_id}_continued.pkl', 'wb'))
-
 if __name__ == "__main__":
 
-    for i in range(2, 6):
+    # Run five simulations
+    for i in range(1, 6):
 
         print(f"Running simulation {i}...")
 
